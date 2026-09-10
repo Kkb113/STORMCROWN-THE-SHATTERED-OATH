@@ -1,0 +1,49 @@
+name: Browser playability and rendering
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['.updates/**']
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Apply tested source update']
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: stormcrown-browser
+  cancel-in-progress: false
+jobs:
+  browser:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install playwright==1.55.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Browser checks and measured software-rendering sample
+        run: python tests/browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stormcrown-browser-report
+          path: test-results/browser/
+          retention-days: 14
+      - name: Export exact tested history
+        if: always()
+        run: git bundle create /tmp/stormcrown.bundle --all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stormcrown-browser-history
+          path: /tmp/stormcrown.bundle
+          retention-days: 7
