@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#10121e">
+  <meta name="description" content="Eleven ordinary people. One impossible oath. An isometric action RPG set above a living storm.">
+  <title>STORMCROWN — The Shattered Oath</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/ui/crown.svg">
+  <link rel="stylesheet" href="./src/styles.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}</script>
+</head>
+<body>
+  <canvas id="world" aria-label="STORMCROWN 3D game world"></canvas>
+  <div id="vignette" aria-hidden="true"></div>
+  <div id="damage-flash" aria-hidden="true"></div>
+  <div id="ui"></div>
+  <div id="notifications" aria-live="polite"></div>
+  <div id="loading" role="status"><div class="loading-emblem">♜</div><div class="eyebrow">AETHERra • THE FALLING WORLD</div><h1>STORMCROWN</h1><p id="loading-label" class="loading-status">Gathering the fragments…</p><div class="loading-bar"><i id="loading-bar"></i></div><small>The sky was never our home. It was our prison.</small></div>
+  <noscript>This game needs JavaScript and a WebGL 2 capable browser.</noscript>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

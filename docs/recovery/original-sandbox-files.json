@@ -1,0 +1,237 @@
+[
+  {
+    "path": "index.html",
+    "bytes": 1376,
+    "sha256": "3af59688007382b91c202d4cda1aba4b038400bf931d3f8e99224a9a5c3e2c44"
+  },
+  {
+    "path": "package.json",
+    "bytes": 508,
+    "sha256": "7616f53b3848c7d881e51e3b304901b1ba43cc15bfd933cf4cd8c700cfa4a4f6"
+  },
+  {
+    "path": "src/app/game.js",
+    "bytes": 16264,
+    "sha256": "663081e34c561466c4f6fb3614197fb04dcb8e902bb179b96ab3c9a7972d114e"
+  },
+  {
+    "path": "src/audio/audio.js",
+    "bytes": 14439,
+    "sha256": "3b324bfe587fcf44afa96e3cdeeea824f86096528c2089bac94d65605ea756f1"
+  },
+  {
+    "path": "src/core/config.js",
+    "bytes": 2803,
+    "sha256": "9d63fddd78d5842bbd01f7a1383e2da07a2b0d58c2c673e7685d2c63b569e5f8"
+  },
+  {
+    "path": "src/core/events.js",
+    "bytes": 545,
+    "sha256": "68da293fe0f20bd1532a3b8469fedea8e9c7fad6bb64f2628c47fb011c7eedb8"
+  },
+  {
+    "path": "src/core/input.js",
+    "bytes": 6572,
+    "sha256": "b9a5a9324478bd6b530fe0b157ccf8d435edce2dc5edbf1541ff6b95b94f160a"
+  },
+  {
+    "path": "src/core/math.js",
+    "bytes": 2124,
+    "sha256": "52a2a2613b96842532401cdf9d4ac3db74362bc634e069b93ed7c17db601b25e"
+  },
+  {
+    "path": "src/core/save.js",
+    "bytes": 8326,
+    "sha256": "42af3038bef60f3d4b77ae2f0b7fc9acb33501f11d65081f325ea6b2b1637bae"
+  },
+  {
+    "path": "src/data/campaign.js",
+    "bytes": 43646,
+    "sha256": "4d4d2120a0841fd3c7af03b420ea98f3853af26b1f2bf3eda6e8e5bbfcb5a6bc"
+  },
+  {
+    "path": "src/data/dialogue.js",
+    "bytes": 12645,
+    "sha256": "0f6140780dd84a96e67213d2582ee570bb2db73a958250ac801d7348e13a968c"
+  },
+  {
+    "path": "src/data/enemies.js",
+    "bytes": 5551,
+    "sha256": "0bbfa3fe044cca4a6e38211593b513781abd267a3709e5d3fdc2d2df24d3178d"
+  },
+  {
+    "path": "src/data/heroes.js",
+    "bytes": 14838,
+    "sha256": "7ee4cd56e5cc5b55ee0d3a2fe422518e86dd4cb5312f4c018eb9edfad51bb6bb"
+  },
+  {
+    "path": "src/data/lore.js",
+    "bytes": 10012,
+    "sha256": "d5454c70212d97f038175903044edf70c7d6a86b55bdb55f47c7bf7739eacc32"
+  },
+  {
+    "path": "src/data/regions.js",
+    "bytes": 2577,
+    "sha256": "056a6ee3075471fc79529096f524790968121eda26cf423b138b1ef5a3731743"
+  },
+  {
+    "path": "src/data/relics.js",
+    "bytes": 3518,
+    "sha256": "cebd03e51cad51deca4cd31214185fdc82bc2365adfeb184995ead44a9628d58"
+  },
+  {
+    "path": "src/game/abilities.js",
+    "bytes": 21929,
+    "sha256": "ea94cf6d471862f6d2b174afeefc61c997ae848fe6feafe9047407c635dc8f86"
+  },
+  {
+    "path": "src/game/ai.js",
+    "bytes": 9163,
+    "sha256": "309b8208b4594e98e4cb3c73c3315f10f0a6cc9a0e601b844442c3e8c3fdd5ca"
+  },
+  {
+    "path": "src/game/bosses.js",
+    "bytes": 14493,
+    "sha256": "8a3c66dc82d1cc2fa0b129d873121753e208b9bdd32ce4c26479798f008d509d"
+  },
+  {
+    "path": "src/game/combat.js",
+    "bytes": 21040,
+    "sha256": "b3445f7f02ca3af04cc74e4714c11a53be44191076cc83cf99a45d3bd966d8cf"
+  },
+  {
+    "path": "src/game/director.js",
+    "bytes": 25239,
+    "sha256": "44e854a01c3efdd18fc403612c8637d98b7c5a1270c81e3db790fcd6fb4d4e18"
+  },
+  {
+    "path": "src/game/entities.js",
+    "bytes": 5626,
+    "sha256": "e979f4a5b9a9891c00ff814bc7b7a764a454a5a7d6a8f23cc63fb7f6dab4689e"
+  },
+  {
+    "path": "src/game/progression.js",
+    "bytes": 9283,
+    "sha256": "d6f9f406c06250809e3ce088126e1b01f42de0fc384d4ceec7dc2ac918c3bba6"
+  },
+  {
+    "path": "src/game/simulation.js",
+    "bytes": 18915,
+    "sha256": "f740e16e7f3a65b5ff4c85b8312b6c1ebcd9009cdc7e23ead44fc820fb41159b"
+  },
+  {
+    "path": "src/game/training.js",
+    "bytes": 4460,
+    "sha256": "88e49d63541211d32d1e5df2a4ad2af932369add65812bfe24e4a6a85787bd95"
+  },
+  {
+    "path": "src/game/world.js",
+    "bytes": 11441,
+    "sha256": "aa36728911a90a27eb94230c4b44c88bdd4e1b3c23fe69c874e0831f4ecb83b0"
+  },
+  {
+    "path": "src/main.js",
+    "bytes": 1006,
+    "sha256": "15907fc460bcb3f1e8c579c9e2db903c9357c4f0cd99f70ebf5e87f76663d27a"
+  },
+  {
+    "path": "src/render/characters.js",
+    "bytes": 28810,
+    "sha256": "53e0c90a3ccbd2a52d092719538718537446e54e8f7d5771d743890a817fe45d"
+  },
+  {
+    "path": "src/render/environment.js",
+    "bytes": 31028,
+    "sha256": "8e0069477e81ec26f0a382bc373d52ea23ba81987cd038735c80287781ffa500"
+  },
+  {
+    "path": "src/render/geometry.js",
+    "bytes": 4377,
+    "sha256": "db34bb62a992899480506643bafcc6191e525e32fda307a3a534ed08fda41361"
+  },
+  {
+    "path": "src/render/materials.js",
+    "bytes": 5659,
+    "sha256": "e1b13e8eead34be7c74ad5dba5ed59cde059234560a2ce80a7b95bd5d4d439ec"
+  },
+  {
+    "path": "src/render/renderer.js",
+    "bytes": 13658,
+    "sha256": "d53b9ab968c37371fc96149a45ce1246390021db8da34f78cde6741c3d3b7b87"
+  },
+  {
+    "path": "src/render/vfx.js",
+    "bytes": 20673,
+    "sha256": "8cf5b2e31a8a2675087e1c7a9ae24d60e4077d6ad561aa84c11e226817c33824"
+  },
+  {
+    "path": "src/render/weather.js",
+    "bytes": 3846,
+    "sha256": "3455aa36bfa19ffb3b99c97057768296eb4271a80bb7f0decc5bf1efe1e66e90"
+  },
+  {
+    "path": "src/styles.css",
+    "bytes": 75466,
+    "sha256": "cb62d3965e80af62c93ba3bca098c2d4b3e6fed5d1c8ece26a32c4dae647e2ee"
+  },
+  {
+    "path": "src/ui/board.js",
+    "bytes": 10233,
+    "sha256": "cf5f8c57aea2251403befe5c2a6698306485cc8625170b875114eefbab04c848"
+  },
+  {
+    "path": "src/ui/hud.js",
+    "bytes": 22616,
+    "sha256": "917579c367c2a73069d9e84ade56f96c6e481dc82e7da33ab3fea875cd73af08"
+  },
+  {
+    "path": "src/ui/icons.js",
+    "bytes": 4726,
+    "sha256": "b299e9c836d7df57f1ef6989bc53c1556cfb17a429779215cdc7442868dab1b4"
+  },
+  {
+    "path": "src/ui/interface.js",
+    "bytes": 11437,
+    "sha256": "f81e838ac4bb41eb98ca6a7b26ed111c21f3256093cdebc31fed20180d14daf3"
+  },
+  {
+    "path": "src/ui/journal.js",
+    "bytes": 8484,
+    "sha256": "fef27f9e23577f5f4617c5f6f1a9ad0ff2410e67231e96362e2d8e2126249403"
+  },
+  {
+    "path": "src/ui/map.js",
+    "bytes": 4141,
+    "sha256": "490d30c5809ea70cb05d515305c1ecf1a8da90d6dc4c8503278f53a36d7de7e1"
+  },
+  {
+    "path": "src/ui/panels.js",
+    "bytes": 21003,
+    "sha256": "53705fc005ed7b1491d27896798c618f4892c9ed4ce9b3cd372869344f105f20"
+  },
+  {
+    "path": "src/ui/roster.js",
+    "bytes": 10642,
+    "sha256": "512b9f1c5092d7c68d7e00c93cd5e80b28ea8472479ad6e4b22fb4cf712479e0"
+  },
+  {
+    "path": "src/ui/training.js",
+    "bytes": 2200,
+    "sha256": "c7b8f84a612bcb85101f82f2dd3067cb80dec191a4e9b5a0d0899a4a8fedefe9"
+  },
+  {
+    "path": "src/ui/util.js",
+    "bytes": 2310,
+    "sha256": "e7daf851b8ce42858aa362580ac2ddc708425845ff39ab983610bfb1e5ba4c4a"
+  },
+  {
+    "path": "tools/build.mjs",
+    "bytes": 1185,
+    "sha256": "c955f1e0e07ecc7a0b40a0abb2ecdaac068064bf6ab489becc91dead9502b7a9"
+  },
+  {
+    "path": "tools/serve.mjs",
+    "bytes": 1940,
+    "sha256": "829e05c01a621a8da878ef83a6422ee9bb5c2660fa6819d6b2b50763e376be92"
+  }
+]

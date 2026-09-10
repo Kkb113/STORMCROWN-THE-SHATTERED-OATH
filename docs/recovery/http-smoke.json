@@ -1,0 +1,13 @@
+{
+  "status": "blocked_by_environment",
+  "scope": "Local HTTP boot; first-mission movement and attack/ability inputs; native browser localStorage checkpoint reload/continue; Warden, mission board and roster. Not a complete mission/campaign playthrough or performance benchmark.",
+  "rendering": "Headless Chromium software renderer; low settings only for this check.",
+  "checks": {
+    "localHTTPServerResponded": true
+  },
+  "pageErrors": [],
+  "consoleErrors": [],
+  "httpErrors": [],
+  "error": "Page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at http://127.0.0.1:56301/\nCall log:\n  - navigating to \"http://127.0.0.1:56301/\", waiting until \"domcontentloaded\"\n",
+  "verificationLimit": "The browser could not navigate to the local server. None of the browser gameplay assertions executed."
+}

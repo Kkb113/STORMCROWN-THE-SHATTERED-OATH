@@ -1,0 +1,8 @@
+{
+  "status": "passed",
+  "preservedOriginalFiles": 47,
+  "verifiedPBRAssets": 16,
+  "reachableBrowserModules": 60,
+  "syntaxCheckedScripts": 45,
+  "scope": "File recovery, runtime import resolution, asset checksums, and JavaScript syntax only; not full gameplay verification."
+}
