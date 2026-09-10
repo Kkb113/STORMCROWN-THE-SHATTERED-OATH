@@ -44,8 +44,10 @@ export class Abilities {
       this.sim.emit('audio',{type:'ultimate',element:e.element,x:e.x,z:e.z});
       this.sim.emit('grade',{element:e.element,duration:3.5});
     } else this.sim.emit('audio',{type:'cast',element:e.element,x:e.x,z:e.z});
+    // Objective validation must use where the cast began, not where a dash ends.
+    const castOrigin={x:e.x,z:e.z};
     this.handlers[skill.type].call(this,e,{...skill,power,radius,point});
-    this.sim.director?.abilityUsed(e,slot);
+    this.sim.director?.abilityUsed(e,slot,castOrigin);
     return true;
   }
   feedback(e,text) {if(e.id===this.sim.activeHero?.id)this.sim.emit('feedback',{text});}

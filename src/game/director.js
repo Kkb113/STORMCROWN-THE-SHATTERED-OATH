@@ -281,9 +281,9 @@ export class MissionDirector {
     this.waitingChoice=false;for(const e of this.required)e.used=true;
     this.sim.emit('dialogue',{lines:[option.line],after:()=>this.finishStage()});return true;
   }
-  abilityUsed(e,slot){
+  abilityUsed(e,slot,castOrigin=e){
     if(this.stage?.type!=='anchors'||slot!==0||e.id!==this.sim.activeHero.id)return;
-    const anchor=this.required.find(o=>o.heroId===e.heroId&&!o.used&&distance(o,e)<4);
+    const anchor=this.required.find(o=>o.heroId===e.heroId&&!o.used&&distance(o,castOrigin)<4);
     if(!anchor||this.attuned!==anchor.id)return;
     anchor.used=true;anchor.bound=true;this.progress++;
     this.sim.emit('anchorBound',{heroId:e.heroId,anchor,count:this.progress});
