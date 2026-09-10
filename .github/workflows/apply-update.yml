@@ -1,0 +1,57 @@
+name: Apply tested source update
+on:
+  push:
+    branches: [master]
+    paths: ['.updates/*.patch']
+permissions:
+  contents: write
+concurrency:
+  group: apply-stormcrown-update
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exactly the reviewed patch from this commit
+        shell: bash
+        run: |
+          mapfile -t patches < <(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- '.updates/*.patch')
+          test "${#patches[@]}" -eq 1
+          git apply --check --index "${patches[0]}"
+          git apply --index "${patches[0]}"
+      - name: Test the resulting game before committing
+        run: |
+          npm test
+          npm run check
+          npm run build
+      - name: Publish verified source without overwriting concurrent work
+        shell: bash
+        run: |
+          git fetch origin master
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          message="$(git log -1 --format=%s)"
+          git commit -m "${message#update: }" -m "Applied the checked patch; regression, import, asset and build checks passed before publication."
+          git push origin HEAD:master
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stormcrown-tested-game
+          path: dist/
+          retention-days: 14
+      - name: Bundle exact published history
+        if: success()
+        run: git bundle create /tmp/stormcrown.bundle --all
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: stormcrown-published-history
+          path: /tmp/stormcrown.bundle
+          retention-days: 7
