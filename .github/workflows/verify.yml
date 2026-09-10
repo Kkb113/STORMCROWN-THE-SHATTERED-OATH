@@ -1,0 +1,45 @@
+name: Verify and package
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: find src tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+      - name: Regression tests
+        run: |
+          if find tests -maxdepth 1 -name '*.test.mjs' -print -quit | grep -q .; then
+            node --test tests/*.test.mjs
+          fi
+      - name: Build local-asset distribution
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stormcrown-playable-build
+          path: dist/
+          retention-days: 14
+      - name: Preserve source and exact history for offline verification
+        if: always()
+        run: |
+          mkdir -p /tmp/stormcrown-export
+          git bundle create /tmp/stormcrown-export/stormcrown.bundle --all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stormcrown-source-history
+          path: /tmp/stormcrown-export/stormcrown.bundle
+          retention-days: 7
