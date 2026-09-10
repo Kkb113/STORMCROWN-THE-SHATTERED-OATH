@@ -1,0 +1,258 @@
+diff --git a/src/game/clearance.js b/src/game/clearance.js
+new file mode 100644
+index 0000000..f23922a
+--- /dev/null
++++ b/src/game/clearance.js
+@@ -0,0 +1,50 @@
++/** Exact segment coverage by the union of traversable platforms and bridge
++ * capsules. Sampling missed thin gaps at bridge mouths and stranded followers.
++ * Intervals also avoid the cost of walking dozens of samples down every ray.
++ */
++import { segmentDistanceSq } from '../core/math.js';
++const EPS=1e-8;
++function circle(a,dx,dz,x,z,r){
++  if(r<0)return null;
++  const ox=a.x-x,oz=a.z-z,q=dx*dx+dz*dz,c=ox*ox+oz*oz-r*r;
++  if(q<EPS)return c<=EPS?[0,1]:null;
++  const b=ox*dx+oz*dz,disc=b*b-q*c;if(disc<0)return null;
++  const root=Math.sqrt(Math.max(0,disc)),lo=Math.max(0,(-b-root)/q),hi=Math.min(1,(-b+root)/q);
++  return lo<=hi+EPS?[lo,hi]:null;
++}
++function polygon(a,dx,dz,x,z,planes){
++  const ox=a.x-x,oz=a.z-z;let lo=0,hi=1;
++  for(const [nx,nz,c]of planes){
++    const start=ox*nx+oz*nz,change=dx*nx+dz*nz;
++    if(Math.abs(change)<EPS){if(start>c+EPS)return null;continue;}
++    const at=(c-start)/change;if(change>0)hi=Math.min(hi,at);else lo=Math.max(lo,at);
++    if(lo>hi+EPS)return null;
++  }
++  return [Math.max(0,lo),Math.min(1,hi)];
++}
++export function clearSegment(world,a,b,radius=.55){
++  const dx=b.x-a.x,dz=b.z-a.z,segments=[];
++  const add=s=>{if(s&&s[0]<=s[1]+EPS)segments.push(s);};
++  for(const room of world.rooms){
++    if(room.shape==='rect'){
++      const x=room.width/2-radius,z=room.depth/2-radius;
++      add(polygon(a,dx,dz,room.x,room.z,[[1,0,x],[-1,0,x],[0,1,z],[0,-1,z]]));
++    }else if(room.shape==='octagon'){
++      const r=room.radius-radius,d=r*1.4142;
++      add(polygon(a,dx,dz,room.x,room.z,[[1,0,r],[-1,0,r],[0,1,r],[0,-1,r],[1,1,d],[1,-1,d],[-1,1,d],[-1,-1,d]]));
++    }else add(circle(a,dx,dz,room.x,room.z,room.radius-radius));
++  }
++  for(const bridge of world.bridges){
++    const x=bridge.b.x-bridge.a.x,z=bridge.b.z-bridge.a.z,length=Math.hypot(x,z),r=Math.max(.5,bridge.width/2-radius);
++    if(length<EPS){add(circle(a,dx,dz,bridge.a.x,bridge.a.z,r));continue;}
++    const nx=x/length,nz=z/length;
++    add(polygon(a,dx,dz,bridge.a.x,bridge.a.z,[[nx,nz,length],[-nx,-nz,0],[-nz,nx,r],[nz,-nx,r]]));
++    add(circle(a,dx,dz,bridge.a.x,bridge.a.z,r));add(circle(a,dx,dz,bridge.b.x,bridge.b.z,r));
++  }
++  segments.sort((s,t)=>s[0]-t[0]);let end=0;
++  for(const [lo,hi]of segments){if(lo>end+EPS)return false;end=Math.max(end,hi);if(end>=1-EPS)break;}
++  if(end<1-EPS)return false;
++  for(const o of world.obstacles)if(segmentDistanceSq(o,a,b)<(o.radius+radius)**2-EPS)return false;
++  for(const h of world.holes)if(segmentDistanceSq(h,a,b)<(h.radius+radius)**2-EPS)return false;
++  return true;
++}
+diff --git a/src/game/navigation.js b/src/game/navigation.js
+new file mode 100644
+index 0000000..45b4f9f
+--- /dev/null
++++ b/src/game/navigation.js
+@@ -0,0 +1,90 @@
++/** Cached clearance grid with reusable A* workspaces. Routes go around pillars,
++ * not through room centres. The swept movement solver remains authoritative.
++ * Static walkability is memoized; temporary boss holes are checked per query.
++ */
++const OFFSETS = [[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,Math.SQRT2],[1,-1,Math.SQRT2],[-1,1,Math.SQRT2],[-1,-1,Math.SQRT2]];
++class MinHeap {
++  constructor(){this.items=[];this.priorities=[];}
++  clear(){this.items.length=this.priorities.length=0;}
++  push(id,priority){
++    let i=this.items.length;this.items.push(id);this.priorities.push(priority);
++    while(i>0){const p=(i-1)>>1;if(this.priorities[p]<=priority)break;this.items[i]=this.items[p];this.priorities[i]=this.priorities[p];i=p;}
++    this.items[i]=id;this.priorities[i]=priority;
++  }
++  pop(){
++    const first=this.items[0],last=this.items.pop(),value=this.priorities.pop(),n=this.items.length;
++    if(n){let i=0;while(i*2+1<n){let c=i*2+1;if(c+1<n&&this.priorities[c+1]<this.priorities[c])c++;if(this.priorities[c]>=value)break;this.items[i]=this.items[c];this.priorities[i]=this.priorities[c];i=c;}this.items[i]=last;this.priorities[i]=value;}
++    return first;
++  }
++}
++export class NavigationGrid {
++  constructor(world,cellSize=1.25){
++    this.world=world;this.cell=cellSize;this.cache=new Map();this.heap=new MinHeap();this.generation=0;
++    const extent=r=>r.shape==='rect'?Math.max(r.width,r.depth)/2:r.radius;
++    this.minX=Math.floor(Math.min(...world.rooms.map(r=>r.x-extent(r)))/cellSize)-2;
++    this.minZ=Math.floor(Math.min(...world.rooms.map(r=>r.z-extent(r)))/cellSize)-2;
++    this.width=Math.ceil(Math.max(...world.rooms.map(r=>r.x+extent(r)))/cellSize)-this.minX+3;
++    this.height=Math.ceil(Math.max(...world.rooms.map(r=>r.z+extent(r)))/cellSize)-this.minZ+3;
++    const n=this.width*this.height;
++    this.cost=new Float32Array(n);this.parent=new Int32Array(n);this.seen=new Uint32Array(n);this.closed=new Uint32Array(n);
++    this.stats={queries:0,expanded:0,cacheMisses:0};
++  }
++  point(id){return {x:(id%this.width+this.minX)*this.cell,z:(Math.floor(id/this.width)+this.minZ)*this.cell};}
++  coords(p){return {x:Math.round(p.x/this.cell)-this.minX,z:Math.round(p.z/this.cell)-this.minZ};}
++  valid(x,z){return x>=0&&z>=0&&x<this.width&&z<this.height;}
++  open(id,radius,cache){
++    if(!cache[id]){
++      this.stats.cacheMisses++;
++      cache[id]=this.world.isStaticWalkable(this.point(id),radius)?2:1;
++    }
++    if(cache[id]!==2)return false;
++    if(this.world.holes.length){const p=this.point(id);for(const h of this.world.holes)if((p.x-h.x)**2+(p.z-h.z)**2<(h.radius+radius)**2)return false;}
++    return true;
++  }
++  nearest(p,radius,cache){
++    const c=this.coords(p);let best=-1,bestD=Infinity;
++    for(let z=c.z-3;z<=c.z+3;z++)for(let x=c.x-3;x<=c.x+3;x++){
++      if(!this.valid(x,z))continue;const id=z*this.width+x,q=this.point(id),d=(p.x-q.x)**2+(p.z-q.z)**2;
++      if(d<bestD&&this.open(id,radius,cache)&&this.world.clearLine(p,q,radius)){best=id;bestD=d;}
++    }
++    return best;
++  }
++  find(from,to,radius=.55){
++    this.stats.queries++;
++    // A small set of clearance buckets bounds memory across the eleven heroes.
++    // Character definitions provide a bounded set of exact clearance radii.
++    // Rounding upward can reject a valid actor standing next to an edge.
++    let cache=this.cache.get(radius);if(!cache){cache=new Uint8Array(this.width*this.height);this.cache.set(radius,cache);}
++    const start=this.nearest(from,radius,cache),goal=this.nearest(to,radius,cache);
++    if(start<0||goal<0)return [{x:to.x,z:to.z}];
++    const gx=goal%this.width,gz=Math.floor(goal/this.width),heuristic=id=>{
++      const dx=Math.abs(id%this.width-gx),dz=Math.abs(Math.floor(id/this.width)-gz);return Math.max(dx,dz)+.41421356*Math.min(dx,dz);
++    };
++    if(++this.generation===0xffffffff){this.seen.fill(0);this.closed.fill(0);this.generation=1;}
++    const stamp=this.generation;this.heap.clear();this.heap.push(start,heuristic(start));this.cost[start]=0;this.seen[start]=stamp;this.parent[start]=-1;
++    let reached=false,expanded=0;
++    while(this.heap.items.length&&expanded<9000){
++      const id=this.heap.pop();if(this.closed[id]===stamp)continue;
++      if(id===goal){reached=true;break;}this.closed[id]=stamp;expanded++;
++      const x=id%this.width,z=Math.floor(id/this.width);
++      for(const [dx,dz,length] of OFFSETS){
++        const nx=x+dx,nz=z+dz;if(!this.valid(nx,nz))continue;const next=nz*this.width+nx;
++        if(this.closed[next]===stamp||!this.open(next,radius,cache))continue;
++        // Never cut the corner of a pillar or jump across the edge of a bridge.
++        if(dx&&dz&&(!this.open(z*this.width+nx,radius,cache)||!this.open(nz*this.width+x,radius,cache)))continue;
++        if(!this.world.clearLine(this.point(id),this.point(next),radius))continue;
++        const cost=this.cost[id]+length;if(this.seen[next]===stamp&&cost>=this.cost[next])continue;
++        this.seen[next]=stamp;this.cost[next]=cost;this.parent[next]=id;this.heap.push(next,cost+heuristic(next));
++      }
++    }
++    this.stats.expanded+=expanded;if(!reached)return [{x:to.x,z:to.z}];
++    const reverse=[];for(let id=goal;id!==-1;id=this.parent[id])reverse.push(this.point(id));
++    reverse.reverse();reverse.push({x:to.x,z:to.z});
++    const result=[];let anchor=from;
++    for(let i=0;i<reverse.length;){
++      let far=i;while(far+1<reverse.length&&this.world.clearLine(anchor,reverse[far+1],radius))far++;
++      const p=reverse[far];result.push(p);anchor=p;i=far+1;
++    }
++    return result;
++  }
++}
+diff --git a/src/game/world.js b/src/game/world.js
+index b5fe76c..434c471 100644
+--- a/src/game/world.js
++++ b/src/game/world.js
+@@ -1 +1,3 @@
++import { clearSegment } from './clearance.js';
++import { NavigationGrid } from './navigation.js';
+ import { random, hashString, distance, segmentDistanceSq, clamp, normalize2, TAU } from '../core/math.js';
+@@ -32,2 +34,3 @@ export class WorldMap {
+     this.buildNavigation();
++    this.navigator=new NavigationGrid(this);
+   }
+@@ -101,6 +104,10 @@ export class WorldMap {
+   }
+-  isWalkable(p, radius = .55, ignoreObstacles = false) {
++  isStaticWalkable(p, radius = .55, ignoreObstacles = false) {
+     if (!this.roomAt(p,radius) && !this.bridgeAt(p,radius)) return false;
+-    if (this.holes.some(h => distance(p,h) < h.radius+radius)) return false;
+-    if (!ignoreObstacles && this.obstacles.some(o => distance(p,o) < o.radius+radius)) return false;
++    if (!ignoreObstacles)for(const o of this.obstacles)if((p.x-o.x)**2+(p.z-o.z)**2<(o.radius+radius)**2)return false;
++    return true;
++  }
++  isWalkable(p, radius = .55, ignoreObstacles = false) {
++    if(!this.isStaticWalkable(p,radius,ignoreObstacles))return false;
++    for(const h of this.holes)if((p.x-h.x)**2+(p.z-h.z)**2<(h.radius+radius)**2)return false;
+     return true;
+@@ -120,7 +127,3 @@ export class WorldMap {
+   }
+-  clearLine(a,b,radius = .55) {
+-    const n = Math.max(2,Math.ceil(distance(a,b)/1.5));
+-    for (let i=1;i<=n;i++) if (!this.isWalkable({x:a.x+(b.x-a.x)*i/n,z:a.z+(b.z-a.z)*i/n},radius)) return false;
+-    return true;
+-  }
++  clearLine(a,b,radius = .55) { return clearSegment(this,a,b,radius); }
+   nearestNode(p) {
+@@ -133,15 +136,5 @@ export class WorldMap {
+   }
+-  path(from,to) {
+-    if (this.clearLine(from,to)) return [{x:to.x,z:to.z}];
+-    const start=this.nearestNode(from),goal=this.nearestNode(to),front=[start],came=new Map([[start,null]]);
+-    while (front.length) {
+-      const current=front.shift(); if (current===goal) break;
+-      for (const next of this.edges[current]) if (!came.has(next)) {came.set(next,current);front.push(next);}
+-    }
+-    if (!came.has(goal)) return [{x:to.x,z:to.z}];
+-    const out=[]; let step=goal;
+-    while (step!==null) {out.unshift({x:this.nodes[step].x,z:this.nodes[step].z});step=came.get(step);}
+-    out.push({x:to.x,z:to.z});
+-    while (out.length>1 && this.clearLine(from,out[1])) out.shift();
+-    return out;
++  path(from,to,radius=.55) {
++    if(this.clearLine(from,to,radius))return [{x:to.x,z:to.z}];
++    return this.navigator.find(from,to,radius);
+   }
+@@ -150,7 +143,9 @@ export class WorldMap {
+     if (!entity.nav || (entity.navTime || 0)<=0 || distance(entity.navTarget || entity,target)>3) {
+-      entity.nav=this.path(entity,target); entity.navTime=.35; entity.navTarget={x:target.x,z:target.z};
++      entity.nav=this.path(entity,target,entity.radius || .55); entity.navTime=.4; entity.navSightTime=0; entity.navTarget={x:target.x,z:target.z};
+     }
+     entity.navTime-=dt;
+-    while (entity.nav.length>1 && distance(entity,entity.nav[0])<1) entity.nav.shift();
+-    const goal=this.clearLine(entity,target,entity.radius || .55)?target:(entity.nav[0] || target);
++    while (entity.nav.length>1 && (distance(entity,entity.nav[0])<.18 || (distance(entity,entity.nav[0])<1.5 && this.clearLine(entity,entity.nav[1],entity.radius || .55)))) entity.nav.shift();
++    entity.navSightTime=(entity.navSightTime || 0)-dt;
++    if(entity.navSightTime<=0){entity.navDirect=this.clearLine(entity,target,entity.radius || .55);entity.navSightTime=.12;}
++    const goal=entity.navDirect?target:(entity.nav[0] || target);
+     const dir=normalize2(goal.x-entity.x,goal.z-entity.z),angle=Math.atan2(dir.x,dir.z);
+diff --git a/tests/helpers/pilot.mjs b/tests/helpers/pilot.mjs
+index 2df67d8..f051e94 100644
+--- a/tests/helpers/pilot.mjs
++++ b/tests/helpers/pilot.mjs
+@@ -57,4 +57,4 @@ export class Pilot {
+     if(goal&&distance(h,goal)>stop){
+-      if(this.repath<=0||!this.lastGoal||distance(goal,this.lastGoal)>3){this.route=s.world.path(h,goal);this.lastGoal={x:goal.x,z:goal.z};this.repath=.4;}
+-      while(this.route.length>1&&distance(h,this.route[0])<1.5)this.route.shift();
++      if(this.repath<=0||!this.lastGoal||distance(goal,this.lastGoal)>3){this.route=s.world.path(h,goal,h.radius);this.lastGoal={x:goal.x,z:goal.z};this.repath=.4;}
++      while(this.route.length>1&&(distance(h,this.route[0])<.18||(distance(h,this.route[0])<1.5&&s.world.clearLine(h,this.route[1],h.radius))))this.route.shift();
+       const waypoint=s.world.clearLine(h,goal,h.radius)?goal:(this.route[0]||goal);
+diff --git a/tests/navigation.test.mjs b/tests/navigation.test.mjs
+new file mode 100644
+index 0000000..845c56c
+--- /dev/null
++++ b/tests/navigation.test.mjs
+@@ -0,0 +1,22 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {WorldMap} from '../src/game/world.js';
++import {getMission,CAMPAIGN} from '../src/data/campaign.js';
++import {random} from '../src/core/math.js';
++for(const [id,from,index]of [['w02',{x:-44.47110616395725,z:-47.093943518968494},2],['c02',{x:11.104581724044268,z:-14.086925728220645},1]])test(`${id}: bridge-corner route respects swept clearance`,()=>{
++  const w=new WorldMap(getMission(id)),goal=w.rooms[index],h={...from,radius:.55,speed:7};
++  for(let i=0;i<1500&&Math.hypot(h.x-goal.x,h.z-goal.z)>1;i++)w.steer(h,goal,1/60);
++  assert.ok(Math.hypot(h.x-goal.x,h.z-goal.z)<1,JSON.stringify(h));assert.ok(w.isWalkable(h,h.radius));
++});
++
++test('analytic clearance never crosses off-platform slivers or pillar interiors',()=>{
++  const rng=random(62843);
++  for(const mission of CAMPAIGN.filter((m,i)=>i%8===1)){
++    const w=new WorldMap(mission);
++    for(let i=0;i<50;i++){
++      const a=w.point(i%w.rooms.length,rng()*Math.PI*2,rng()*.9,.55),b=w.point((i+1)%w.rooms.length,rng()*Math.PI*2,rng()*.9,.55);
++      if(!w.clearLine(a,b,.55))continue;
++      for(let j=0;j<=1000;j++)assert.ok(w.isWalkable({x:a.x+(b.x-a.x)*j/1000,z:a.z+(b.z-a.z)*j/1000},.55));
++    }
++  }
++});
