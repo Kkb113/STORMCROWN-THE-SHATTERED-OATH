@@ -1,0 +1,385 @@
+diff --git a/src/app/game.js b/src/app/game.js
+index 389a3ff..a575fbb 100644
+--- a/src/app/game.js
++++ b/src/app/game.js
+@@ -174,7 +174,7 @@ export class GameApp {
+     this.paused=this.context==='menu'||!!this.ui?.current||this.sim?.state!=='running';
+     this.input.setEnabled(!this.paused);this.audio.setPaused(this.paused&&this.context!=='menu');
+     this.renderer.presentationPaused=this.paused&&this.context!=='menu';
+-    if(this.paused)this.accumulator=0;
++    if(this.paused){this.accumulator=0;this.sim?.player.reset();}
+   }
+   applySettings(settings,persist=true){
+     this.settings=sanitizeSettings(settings);this.renderer.applySettings(this.settings);this.audio.applySettings(this.settings);
+diff --git a/src/core/input.js b/src/core/input.js
+index 1211374..60aac40 100644
+--- a/src/core/input.js
++++ b/src/core/input.js
+@@ -22,7 +22,7 @@ export class Input extends Events {
+       if(e.ctrlKey||e.metaKey||e.altKey)return;
+       if(!this.enabled&&e.code==='Tab')return;
+       if(GAME_KEYS.has(e.code))e.preventDefault();this.lastDevice='keyboard';
+-      if(!e.repeat){if(SYSTEM_KEYS[e.code])this.emit('system',{action:SYSTEM_KEYS[e.code]});if(ACTION_KEYS[e.code])this.edges.add(ACTION_KEYS[e.code]);if(e.code==='ShiftLeft'||e.code==='ShiftRight')this.edges.add('guardPressed');}
++      if(!e.repeat){if(SYSTEM_KEYS[e.code])this.emit('system',{action:SYSTEM_KEYS[e.code]});if(ACTION_KEYS[e.code])this.edges.add(ACTION_KEYS[e.code]);if(e.code==='ShiftLeft'||e.code==='ShiftRight')this.edges.add('guardPressed');if(e.code==='KeyJ')this.edges.add('attack');if(e.code==='KeyK')this.edges.add('heavy');}
+       this.keys.add(e.code);
+     },options);
+     addEventListener('keyup',e=>this.keys.delete(e.code),options);
+@@ -33,7 +33,7 @@ export class Input extends Events {
+     canvas.addEventListener('pointerdown',e=>{
+       this.emit('gesture',{});if(e.pointerType==='touch')return;
+       this.lastDevice='mouse';this.pointer={x:e.clientX,y:e.clientY,valid:true};
+-      if(e.button===0)this.held.add('attack');if(e.button===2)this.held.add('heavy');
++      if(e.button===0){this.held.add('attack');this.edges.add('attack');}if(e.button===2){this.held.add('heavy');this.edges.add('heavy');}
+       if(e.button===1){e.preventDefault();this.edges.add('dodge');}
+     },options);
+     addEventListener('pointerup',e=>{if(e.button===0)this.held.delete('attack');if(e.button===2)this.held.delete('heavy');},options);
+@@ -44,12 +44,12 @@ export class Input extends Events {
+   }
+   setEnabled(enabled){if(this.enabled!==enabled)this.clear();this.enabled=enabled;}
+   press(action){this.edges.add(action);this.emit('gesture',{});}
+-  hold(action,down){down?this.held.add(action):this.held.delete(action);this.emit('gesture',{});}
++  hold(action,down){if(down){if(!this.held.has(action))this.edges.add(action==='guard'?'guardPressed':action);this.held.add(action);}else this.held.delete(action);this.emit('gesture',{});}
+   setStick(x,y){this.virtual={x,y};this.lastDevice='touch';this.pointer.valid=false;}
+   clear(){this.keys.clear();this.edges.clear();this.held.clear();this.virtual={x:0,y:0};this.padAim=null;}
+   pollGamepad(){
+-    if(!this.gamepadEnabled||!navigator.getGamepads)return;
+-    const pad=Array.from(navigator.getGamepads()).find(Boolean);this.pad=pad;if(!pad)return;
++    if(!this.gamepadEnabled||!navigator.getGamepads){this.pad=null;this.padAim=null;this.padPrevious=[];return;}
++    const pad=Array.from(navigator.getGamepads()).find(Boolean);this.pad=pad;if(!pad){this.padAim=null;this.padPrevious=[];return;}
+     const pressed=pad.buttons.map(b=>b.pressed||b.value>.55),edge=n=>pressed[n]&&!this.padPrevious[n];
+     if(pressed.some(Boolean)||pad.axes.some(v=>Math.abs(v)>.2)){this.lastDevice='gamepad';this.emit('gesture',{});}
+     if(edge(9))this.emit('system',{action:'pause'});
+@@ -58,7 +58,7 @@ export class Input extends Events {
+       if(edge(0))this.emit('system',{action:'confirm'});if(edge(1))this.emit('system',{action:'pause'});
+       if(edge(12)||edge(14))this.emit('system',{action:'focusPrevious'});if(edge(13)||edge(15))this.emit('system',{action:'focusNext'});
+     }else{
+-      const bind={0:'dodge',1:'interact',2:'skill1',3:'skill2',7:'',10:'bond',11:'ultimate',12:'party0',14:'party1',15:'party2',13:'remedy'};
++      const bind={0:'dodge',1:'interact',2:'skill1',3:'skill2',7:'attack',6:'heavy',10:'bond',11:'ultimate',12:'party0',14:'party1',15:'party2',13:'remedy'};
+       for(const [i,a] of Object.entries(bind))if(a&&edge(+i))this.edges.add(a);
+       if(edge(4))this.edges.add('guardPressed');
+       const x=axis(pad.axes[2]||0),y=axis(pad.axes[3]||0),p=this.renderer.sim?.activeHero;
+@@ -67,7 +67,7 @@ export class Input extends Events {
+     this.padPrevious=pressed;
+   }
+   consume(){
+-    if(!this.enabled)return EMPTY_INPUT;
++    if(!this.enabled){this.edges.clear();return EMPTY_INPUT;}
+     const k=this.keys,down=(...codes)=>codes.some(c=>k.has(c));
+     let x=(down('KeyD','ArrowRight')?1:0)-(down('KeyA','ArrowLeft')?1:0)+this.virtual.x;
+     let y=(down('KeyS','ArrowDown')?1:0)-(down('KeyW','ArrowUp')?1:0)+this.virtual.y;
+@@ -76,8 +76,8 @@ export class Input extends Events {
+     const n=Math.max(1,Math.hypot(x,y));x/=n;y/=n;
+     const edge=a=>this.edges.has(a);
+     const out={...EMPTY_INPUT,moveX:x,moveY:y,
+-      attack:this.held.has('attack')||down('KeyJ')||!!pad?.buttons[7]?.pressed,
+-      heavy:this.held.has('heavy')||down('KeyK')||!!pad?.buttons[6]?.pressed,
++      attack:edge('attack')||this.held.has('attack')||down('KeyJ')||!!pad?.buttons[7]?.pressed,
++      heavy:edge('heavy')||this.held.has('heavy')||down('KeyK')||!!pad?.buttons[6]?.pressed,
+       guard:this.held.has('guard')||down('ShiftLeft','ShiftRight')||!!pad?.buttons[4]?.pressed,
+       guardPressed:edge('guardPressed'),dodge:edge('dodge'),skill1:edge('skill1'),skill2:edge('skill2'),ultimate:edge('ultimate'),bond:edge('bond'),remedy:edge('remedy'),interact:edge('interact'),
+       switchTo:edge('party0')?0:edge('party1')?1:edge('party2')?2:null,
+diff --git a/src/game/player.js b/src/game/player.js
+new file mode 100644
+index 0000000..389b1e1
+--- /dev/null
++++ b/src/game/player.js
+@@ -0,0 +1,89 @@
++import { normalize2, distance, angleTo, moveAngle } from '../core/math.js';
++
++export const INPUT_BUFFER_SECONDS = .16;
++const YAW = .64, COS = Math.cos(YAW), SIN = Math.sin(YAW);
++const COMMANDS = ['attack', 'heavy', 'dodge', 'skill1', 'skill2', 'ultimate', 'guardPressed'];
++
++/** Screen-relative motion and short, bounded combat buffering. The controller
++ * owns movement velocity, not knockback velocity. All displacement is swept by
++ * WorldMap; neither a dash nor its recovery can skip collision checks. */
++export class PlayerController {
++  constructor(sim) { this.sim = sim; this.reset(); }
++  reset() { this.pending = new Map(); this.heroId = null; this.vx = 0; this.vz = 0; }
++  capture(input, dt) {
++    for (const [key, left] of this.pending) {
++      if (left <= dt) this.pending.delete(key);
++      else this.pending.set(key, left - dt);
++    }
++    for (const key of COMMANDS) if (input[key]) this.pending.set(key, INPUT_BUFFER_SECONDS);
++  }
++  update(dt, input) {
++    const sim = this.sim;
++    if (input.switchTo !== null && input.switchTo !== undefined) sim.switchParty(input.switchTo);
++    const e = sim.activeHero;
++    if (!e || e.dead) { this.reset(); return; }
++    if (this.heroId !== e.id) { this.reset(); this.heroId = e.id; }
++    this.capture(input, dt);
++    e.moving = false;
++    const x = Number.isFinite(input.moveX) ? input.moveX : 0;
++    const y = Number.isFinite(input.moveY) ? input.moveY : 0;
++    const strength = Math.min(1, Math.hypot(x, y)), raw = normalize2(x, y);
++    const dir = { x: (raw.x * COS + raw.z * SIN) * strength, z: (-raw.x * SIN + raw.z * COS) * strength };
++    let aim = input.aim && Number.isFinite(input.aim.x) && Number.isFinite(input.aim.z) ? input.aim : null;
++    const target = sim.nearestTarget(e, Math.max(e.range + 3, 11));
++    if (sim.autoAim && target && (!aim || distance(aim, e) < 2 || distance(aim, target) < 5.5)) aim = target;
++    const aiming = ['attack','heavy','skill1','skill2','ultimate'].some(key => this.pending.has(key)) || input.guard;
++    if (aim && aiming) e.angle = moveAngle(e.angle, angleTo(e, aim), dt * 32);
++    else if (strength > .05) e.angle = moveAngle(e.angle, Math.atan2(dir.x, dir.z), dt * 18);
++
++    const guarded = this.pending.has('guardPressed') && sim.combat.available(e);
++    sim.combat.guard(e, guarded, !!input.guard);
++    if (guarded || !input.guard) this.pending.delete('guardPressed');
++    if (this.pending.has('dodge') && sim.combat.dodge(e, dir)) {
++      this.pending.delete('dodge'); this.vx = this.vz = 0;
++      e.flow = 1;
++    }
++    // A successful dodge's final recovery can flow into an attack. The evade
++    // window is shortened as well, so this cannot grant an invulnerable combo.
++    if (e.dodge > 0 && e.dodge <= .10 && (this.pending.has('attack') || this.pending.has('heavy'))) {
++      e.dodge = 0; e.action = null; e.attackTimer = 0;
++      e.invulnerable = Math.min(e.invulnerable, .08);
++    }
++    for (const [key, slot] of [['ultimate',2], ['skill1',0], ['skill2',1]]) {
++      if (!this.pending.has(key)) continue;
++      // Long cooldowns are not repeatedly retried; show their normal feedback
++      // once. Only an almost-ready ability stays in the short input buffer.
++      if (e.cooldowns[slot] > INPUT_BUFFER_SECONDS && sim.combat.available(e)) {
++        sim.abilities.cast(e, slot, aim); this.pending.delete(key); continue;
++      }
++      if (e.cooldowns[slot] > 0 || !sim.combat.available(e) || e.action?.kind === 'ultimate') continue;
++      const ok = sim.abilities.cast(e, slot, aim);
++      this.pending.delete(key);
++      if (ok) break;
++    }
++    if (input.bond) sim.abilities.bond();
++    if (input.remedy) sim.combat.remedy();
++    if (input.interact) sim.director.interact();
++    if (!sim.world.isHub) {
++      const key = this.pending.has('heavy') ? 'heavy' : this.pending.has('attack') ? 'attack' : null;
++      if (key && sim.combat.attack(e, key === 'heavy', aim ? angleTo(e, aim) : null)) this.pending.delete(key);
++    }
++    e.flow = Math.max(0, (e.flow || 0) - dt);
++    if (!sim.combat.available(e) || e.y >= 1.2 || e.statuses.root > 0) { this.vx = this.vz = 0; e.moveSpeed = 0; return; }
++    const actionScale = !e.action ? 1 : e.action.kind === 'ultimate' ? .12 : e.action.kind === 'heavy' ? .35 : .72;
++    const speed = e.speed * actionScale * (e.blocking ? .45 : 1) * (e.statuses.frost > 0 ? .58 : 1)
++      * (e.buffs.haste ? 1.3 : 1) * (e.buffs.beast ? 1.18 : 1) * (1 + .12 * e.flow);
++    // 90% of commanded speed in roughly 60 ms; faster braking prevents skating.
++    const blend = 1 - Math.exp(-dt * (strength > .05 ? 38 : 55));
++    this.vx += (dir.x * speed - this.vx) * blend;
++    this.vz += (dir.z * speed - this.vz) * blend;
++    if (strength < .05 && Math.hypot(this.vx, this.vz) < .05) this.vx = this.vz = 0;
++    const beforeX = e.x, beforeZ = e.z;
++    sim.world.move(e, this.vx * dt, this.vz * dt);
++    const movedX = e.x - beforeX, movedZ = e.z - beforeZ;
++    if (Math.abs(movedX) < Math.abs(this.vx * dt) * .2) this.vx = 0;
++    if (Math.abs(movedZ) < Math.abs(this.vz * dt) * .2) this.vz = 0;
++    e.moveSpeed = Math.hypot(movedX, movedZ) / Math.max(.001, dt);
++    e.moving = e.moveSpeed > .1;
++  }
++}
+diff --git a/src/game/simulation.js b/src/game/simulation.js
+index 2bccb0d..59559e9 100644
+--- a/src/game/simulation.js
++++ b/src/game/simulation.js
+@@ -10,6 +10,7 @@ import { AI } from './ai.js';
+ import { Bosses } from './bosses.js';
+ import { MissionDirector } from './director.js';
+ import { TrainingDirector } from './training.js';
++import { PlayerController } from './player.js';
+ 
+ export const EMPTY_INPUT = Object.freeze({moveX:0,moveY:0,attack:false,heavy:false,guard:false,guardPressed:false,dodge:false,skill1:false,skill2:false,ultimate:false,bond:false,remedy:false,interact:false,switchTo:null,aim:null});
+ const timedFields=['invulnerable','hitFlash','stun','frozen'];
+@@ -50,6 +51,7 @@ export class Simulation extends Events {
+     this.activeIndex=clamp(options.checkpoint?.active ?? profile.active,0,this.party.length-1);
+     if(this.world.isHub){this.party=[this.party[this.activeIndex]];this.activeIndex=0;this.party[0].x=0;this.party[0].z=10;this.party[0].slot=0;}
+     this.combat=new Combat(this);this.abilities=new Abilities(this);this.ai=new AI(this);this.bosses=new Bosses(this);
++    this.player=new PlayerController(this);
+     this.resuming=!!options.checkpoint;this.director=mission.kind==='training'?new TrainingDirector(this):new MissionDirector(this,options.checkpoint);
+     this.on('heroDown',()=>{const other=this.party.findIndex(h=>!h.dead);if(other<0)this.fail('The Warden’s last anchor fell.');else if(this.activeHero.dead)this.switchParty(other);});
+     this.disposed=false;
+@@ -186,35 +188,9 @@ export class Simulation extends Events {
+     this.emit('revive',{hero});
+   }
+   fail(reason){if(this.state!=='running')return;this.state='defeated';this.stats.deaths++;this.profile.deaths++;this.emit('defeat',{reason});}
+-  updatePlayer(dt,input){
+-    const h=this.activeHero;if(!h||h.dead)return;
+-    h.moving=false;
+-    if(input.switchTo!==null&&input.switchTo!==undefined)this.switchParty(input.switchTo);
+-    // Screen-up points away from an isometric camera at yaw +0.64 radians.
+-    const yaw=.64,raw=normalize2(input.moveX||0,input.moveY||0),strength=Math.min(1,Math.hypot(input.moveX||0,input.moveY||0));
+-    const dir={x:(raw.x*Math.cos(yaw)+raw.z*Math.sin(yaw))*strength,z:(-raw.x*Math.sin(yaw)+raw.z*Math.cos(yaw))*strength};
+-    const e=this.activeHero;
+-    const target=this.nearestTarget(e,Math.max(e.range+3,11));
+-    let aim=input.aim;
+-    if(this.autoAim&&target && (!aim || distance(aim,e)<2 || distance(aim,target)<5.5))aim=target;
+-    if(aim&&(input.attack||input.heavy||input.skill1||input.skill2||input.ultimate||input.guard))e.angle=moveAngle(e.angle,angleTo(e,aim),dt*30);
+-    else if(strength>.1)e.angle=moveAngle(e.angle,Math.atan2(dir.x,dir.z),dt*12);
+-    this.combat.guard(e,!!input.guardPressed,!!input.guard);
+-    if(input.dodge)this.combat.dodge(e,dir);
+-    if(input.skill1)this.abilities.cast(e,0,aim);
+-    if(input.skill2)this.abilities.cast(e,1,aim);
+-    if(input.ultimate)this.abilities.cast(e,2,aim);
+-    if(input.bond)this.abilities.bond();
+-    if(input.remedy)this.combat.remedy();
+-    if(input.interact)this.director.interact();
+-    if(!this.world.isHub){if(input.heavy)this.combat.attack(e,true,aim?angleTo(e,aim):null);else if(input.attack)this.combat.attack(e,false,aim?angleTo(e,aim):null);}
+-    if(this.combat.available(e)&&e.y<1.2&&strength>.1){
+-      const speed=e.speed*(e.action?(e.action.kind==='ultimate'?.12:e.action.kind==='heavy'?.35:.62):1)*(e.blocking?.45:1)*(e.statuses.frost>0?.58:1)*(e.statuses.root>0?0:1)*(e.buffs.haste?1.3:1)*(e.buffs.beast?1.18:1);
+-      const x=e.x,z=e.z;this.world.move(e,dir.x*speed*dt,dir.z*speed*dt);e.moving=Math.hypot(e.x-x,e.z-z)>dt*.1;e.moveSpeed=speed*strength;
+-    }
+-  }
++  updatePlayer(dt,input){ this.player.update(dt,input); }
+   updatePhysics(e,dt){
+-    e.prevX=e.x;e.prevZ=e.z;e.age+=dt;
++    e.prevX=e.x;e.prevZ=e.z;e.prevY=e.y;e.prevAngle=e.angle;e.age+=dt;
+     if(e.dead)e.deathAge+=dt;
+     if(Math.abs(e.vx)+Math.abs(e.vz)>.05){this.world.move(e,e.vx*dt,e.vz*dt);const drag=Math.exp(-dt*6);e.vx*=drag;e.vz*=drag;}
+     if(e.vy!==0||e.y>0){e.vy-=dt*19;e.y+=e.vy*dt;if(e.y<0){e.y=0;e.vy=0;if(e.airborne>0)this.emit('effect',{type:'dust',x:e.x,z:e.z,color:0xafa7b8});}}
+diff --git a/tests/input.test.mjs b/tests/input.test.mjs
+new file mode 100644
+index 0000000..ccdd5e2
+--- /dev/null
++++ b/tests/input.test.mjs
+@@ -0,0 +1,51 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { Input } from '../src/core/input.js';
++
++/** Small event-target harness. No browser globals leak into other tests. */
++function device(run) {
++  const window = new EventTarget(), document = new EventTarget(), canvas = new EventTarget();
++  let pads=[];
++  const definitions={addEventListener:window.addEventListener.bind(window),document,navigator:{getGamepads:()=>pads}};
++  const before=new Map(Object.keys(definitions).map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
++  for(const [k,v] of Object.entries(definitions))Object.defineProperty(globalThis,k,{value:v,configurable:true});
++  const input=new Input(canvas,{groundFromScreen:(x,z)=>({x,z}),zoom:()=>{},sim:{activeHero:{x:0,z:0}}});
++  const fire=(target,type,props={})=>{const event=new Event(type,{cancelable:true});Object.assign(event,props);target.dispatchEvent(event);return event;};
++  try {run({input,canvas,window,fire,setPads:p=>{pads=p;}});}
++  finally {
++    input.dispose();
++    for(const [k,d] of before){if(d)Object.defineProperty(globalThis,k,d);else delete globalThis[k];}
++  }
++}
++
++test('a complete keyboard tap between fixed ticks is delivered exactly once',()=>device(({input,window,fire})=>{
++  fire(window,'keydown',{code:'KeyJ',repeat:false});fire(window,'keyup',{code:'KeyJ'});
++  assert.equal(input.consume().attack,true);assert.equal(input.consume().attack,false);
++  fire(window,'keydown',{code:'KeyK',repeat:false});fire(window,'keyup',{code:'KeyK'});
++  assert.equal(input.consume().heavy,true);assert.equal(input.consume().heavy,false);
++}));
++test('mouse and touch attack taps survive a low rendering frame rate',()=>device(({input,canvas,window,fire})=>{
++  fire(canvas,'pointerdown',{pointerType:'mouse',button:0,clientX:20,clientY:30});
++  fire(window,'pointerup',{button:0});assert.equal(input.consume().attack,true);assert.equal(input.consume().attack,false);
++  input.hold('heavy',true);input.hold('heavy',false);
++  assert.equal(input.consume().heavy,true);assert.equal(input.consume().heavy,false);
++}));
++test('release after sustained input does not produce an endless attack',()=>device(({input,window,fire})=>{
++  fire(window,'keydown',{code:'KeyJ',repeat:false});assert.equal(input.consume().attack,true);assert.equal(input.consume().attack,true);
++  fire(window,'keyup',{code:'KeyJ'});assert.equal(input.consume().attack,false);
++}));
++test('disconnecting or disabling a gamepad clears stale movement and aim',()=>device(({input,setPads})=>{
++  const buttons=Array.from({length:16},()=>({pressed:false,value:0}));buttons[7]={pressed:true,value:1};
++  setPads([{axes:[1,0,1,0],buttons}]);input.pollGamepad();const a=input.consume();assert.equal(a.attack,true);assert.equal(a.moveX,1);assert.ok(a.aim);
++  setPads([]);input.pollGamepad();const b=input.consume();assert.equal(b.attack,false);assert.equal(b.moveX,0);assert.equal(b.aim,null);
++  setPads([{axes:[1,0,1,0],buttons}]);input.gamepadEnabled=false;input.pollGamepad();assert.equal(input.consume().moveX,0);
++}));
++test('blur and pause discard queued gameplay commands',()=>device(({input,window,fire})=>{
++  input.press('skill1');fire(window,'blur');assert.equal(input.consume().skill1,false);
++  input.hold('attack',true);input.setEnabled(false);assert.equal(input.consume().attack,false);
++  input.press('skill2');input.consume();input.setEnabled(true);assert.equal(input.consume().skill2,false);
++}));
++test('keyboard and analogue stick diagonals are bounded to unit length',()=>device(({input,window,fire})=>{
++  fire(window,'keydown',{code:'KeyD',repeat:false});fire(window,'keydown',{code:'KeyS',repeat:false});input.setStick(1,1);
++  const a=input.consume();assert.ok(Math.abs(Math.hypot(a.moveX,a.moveY)-1)<1e-9);
++}));
+diff --git a/tests/movement.test.mjs b/tests/movement.test.mjs
+new file mode 100644
+index 0000000..246fb4e
+--- /dev/null
++++ b/tests/movement.test.mjs
+@@ -0,0 +1,89 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { Simulation, EMPTY_INPUT } from '../src/game/simulation.js';
++import { createProfile, finishMission } from '../src/game/progression.js';
++import { CAMPAIGN } from '../src/data/campaign.js';
++import { HEROES } from '../src/data/heroes.js';
++import { packSave, unpackSave } from '../src/core/save.js';
++
++function fixture() {
++  const sim = new Simulation(createProfile(), CAMPAIGN[0]);
++  sim.director.update=()=>{}; sim.ai.enemies=()=>{}; sim.ai.companions=()=>{};
++  sim.activeHero.x=0; sim.activeHero.z=0;
++  return sim;
++}
++const tick=(sim, input={}, n=1)=>{for(let i=0;i<n;i++)sim.update(1/60,{...EMPTY_INPUT,...input});};
++
++test('all eleven first abilities bind their final oath, including displacement skills', () => {
++  const p=createProfile(); p.unlocked=HEROES.map(h=>h.id);
++  const mission=CAMPAIGN.at(-1), sim=new Simulation(p,mission,{checkpoint:{stage:3,party:p.party}});
++  sim.director.start();
++  for(const anchor of sim.director.required) {
++    sim.activeHero.x=anchor.x;sim.activeHero.z=anchor.z;
++    assert.equal(sim.director.interact(anchor),true,anchor.heroId+' attune');
++    assert.equal(sim.abilities.cast(sim.activeHero,0),true,anchor.heroId+' cast');
++    assert.equal(anchor.bound,true,anchor.heroId+' must bind from cast origin');
++  }
++  assert.equal(sim.director.progress,11);
++  // Execute the real final sequence timer, rather than granting victory in test code.
++  tick(sim,{},300);
++  assert.equal(sim.state,'victory');
++});
++
++test('an almost-ready ability honors one press; a long cooldown does not auto-fire later',()=>{
++  const sim=fixture(),h=sim.activeHero;
++  h.cooldowns[1]=.09;tick(sim,{skill2:true});tick(sim,{},8);
++  assert.ok(h.cooldowns[1]>1);assert.equal(h.action?.skill,'chain');
++  h.cooldowns[1]=2;h.action=null;h.focus=100;tick(sim,{skill2:true});tick(sim,{},140);
++  assert.equal(h.cooldowns[1],0);
++});
++
++test('attack pressed during recovery is buffered once',()=>{
++  const sim=fixture(),h=sim.activeHero;h.attackTimer=.09;
++  tick(sim,{attack:true});tick(sim,{},7);
++  assert.equal(h.action?.kind,'attack');
++  const serial=h.actionSerial;tick(sim,{},60);assert.equal(h.actionSerial,serial);
++});
++
++test('dodge recovery chains into attack without preserving the full evade window',()=>{
++  const sim=fixture(),h=sim.activeHero;
++  tick(sim,{dodge:true,moveX:1});tick(sim,{},14);tick(sim,{attack:true});
++  assert.equal(h.dodge,0);assert.equal(h.action?.kind,'attack');assert.ok(h.invulnerable<=.08);
++});
++
++test('movement accelerates promptly, brakes without skating, and normalizes diagonals',()=>{
++  const a=fixture(),b=fixture();tick(a,{moveX:1},45);tick(b,{moveX:1,moveY:-1},45);
++  const d=Math.hypot(a.activeHero.x,a.activeHero.z), dd=Math.hypot(b.activeHero.x,b.activeHero.z);
++  assert.ok(d>3 && Math.abs(d-dd)<.015);
++  const h=a.activeHero, x=h.x,z=h.z;tick(a,{},15);
++  assert.ok(Math.hypot(h.x-x,h.z-z)<.12);assert.equal(h.moving,false);
++});
++
++test('switching does not carry buffered abilities or velocity to a different hero',()=>{
++  const sim=fixture();sim.activeHero.cooldowns[1]=.10;
++  tick(sim,{skill2:true,moveX:1});tick(sim,{switchTo:1});tick(sim,{},15);
++  assert.equal(sim.activeIndex,1);assert.equal(sim.activeHero.cooldowns[1],0);
++});
++
++test('rooted and frozen heroes cannot drift using residual movement',()=>{
++  const sim=fixture();tick(sim,{moveX:1},4);const h=sim.activeHero,x=h.x,z=h.z;
++  h.statuses.root=1;tick(sim,{moveX:1},10);assert.equal(h.x,x);assert.equal(h.z,z);
++  h.statuses.root=0;h.frozen=1;tick(sim,{moveX:1},10);assert.equal(h.x,x);assert.equal(h.z,z);
++});
++
++test('all story checkpoint schemas round-trip and restore a legal active character',()=>{
++  const profile=createProfile();
++  for(const mission of CAMPAIGN){
++    for(let stage=0;stage<mission.stages.length;stage++){
++      const sim=new Simulation(profile,mission,{checkpoint:{stage,party:profile.party}});
++      profile.checkpoint=sim.director.checkpoint();
++      const restored=unpackSave(packSave(profile));
++      assert.equal(restored.checkpoint.stage,stage);
++      const loaded=new Simulation(restored,mission,{checkpoint:restored.checkpoint});
++      assert.ok(loaded.world.isWalkable(loaded.activeHero,loaded.activeHero.radius));
++      assert.ok(Number.isFinite(loaded.activeHero.hp));
++    }
++    finishMission(profile,mission,{time:100,kills:20,rescues:3,reactions:5,damageTaken:0,deaths:0,optional:0});
++  }
++  assert.equal(profile.ended,true);
++});
