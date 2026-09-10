@@ -22,7 +22,7 @@ export class Input extends Events {
       if(e.ctrlKey||e.metaKey||e.altKey)return;
       if(!this.enabled&&e.code==='Tab')return;
       if(GAME_KEYS.has(e.code))e.preventDefault();this.lastDevice='keyboard';
-      if(!e.repeat){if(SYSTEM_KEYS[e.code])this.emit('system',{action:SYSTEM_KEYS[e.code]});if(ACTION_KEYS[e.code])this.edges.add(ACTION_KEYS[e.code]);if(e.code==='ShiftLeft'||e.code==='ShiftRight')this.edges.add('guardPressed');}
+      if(!e.repeat){if(SYSTEM_KEYS[e.code])this.emit('system',{action:SYSTEM_KEYS[e.code]});if(ACTION_KEYS[e.code])this.edges.add(ACTION_KEYS[e.code]);if(e.code==='ShiftLeft'||e.code==='ShiftRight')this.edges.add('guardPressed');if(e.code==='KeyJ')this.edges.add('attack');if(e.code==='KeyK')this.edges.add('heavy');}
       this.keys.add(e.code);
     },options);
     addEventListener('keyup',e=>this.keys.delete(e.code),options);
@@ -33,7 +33,7 @@ export class Input extends Events {
     canvas.addEventListener('pointerdown',e=>{
       this.emit('gesture',{});if(e.pointerType==='touch')return;
       this.lastDevice='mouse';this.pointer={x:e.clientX,y:e.clientY,valid:true};
-      if(e.button===0)this.held.add('attack');if(e.button===2)this.held.add('heavy');
+      if(e.button===0){this.held.add('attack');this.edges.add('attack');}if(e.button===2){this.held.add('heavy');this.edges.add('heavy');}
       if(e.button===1){e.preventDefault();this.edges.add('dodge');}
     },options);
     addEventListener('pointerup',e=>{if(e.button===0)this.held.delete('attack');if(e.button===2)this.held.delete('heavy');},options);
@@ -44,12 +44,12 @@ export class Input extends Events {
   }
   setEnabled(enabled){if(this.enabled!==enabled)this.clear();this.enabled=enabled;}
   press(action){this.edges.add(action);this.emit('gesture',{});}
-  hold(action,down){down?this.held.add(action):this.held.delete(action);this.emit('gesture',{});}
+  hold(action,down){if(down){if(!this.held.has(action))this.edges.add(action==='guard'?'guardPressed':action);this.held.add(action);}else this.held.delete(action);this.emit('gesture',{});}
   setStick(x,y){this.virtual={x,y};this.lastDevice='touch';this.pointer.valid=false;}
   clear(){this.keys.clear();this.edges.clear();this.held.clear();this.virtual={x:0,y:0};this.padAim=null;}
   pollGamepad(){
-    if(!this.gamepadEnabled||!navigator.getGamepads)return;
-    const pad=Array.from(navigator.getGamepads()).find(Boolean);this.pad=pad;if(!pad)return;
+    if(!this.gamepadEnabled||!navigator.getGamepads){this.pad=null;this.padAim=null;this.padPrevious=[];return;}
+    const pad=Array.from(navigator.getGamepads()).find(Boolean);this.pad=pad;if(!pad){this.padAim=null;this.padPrevious=[];return;}
     const pressed=pad.buttons.map(b=>b.pressed||b.value>.55),edge=n=>pressed[n]&&!this.padPrevious[n];
     if(pressed.some(Boolean)||pad.axes.some(v=>Math.abs(v)>.2)){this.lastDevice='gamepad';this.emit('gesture',{});}
     if(edge(9))this.emit('system',{action:'pause'});
@@ -58,7 +58,7 @@ export class Input extends Events {
       if(edge(0))this.emit('system',{action:'confirm'});if(edge(1))this.emit('system',{action:'pause'});
       if(edge(12)||edge(14))this.emit('system',{action:'focusPrevious'});if(edge(13)||edge(15))this.emit('system',{action:'focusNext'});
     }else{
-      const bind={0:'dodge',1:'interact',2:'skill1',3:'skill2',7:'',10:'bond',11:'ultimate',12:'party0',14:'party1',15:'party2',13:'remedy'};
+      const bind={0:'dodge',1:'interact',2:'skill1',3:'skill2',7:'attack',6:'heavy',10:'bond',11:'ultimate',12:'party0',14:'party1',15:'party2',13:'remedy'};
       for(const [i,a] of Object.entries(bind))if(a&&edge(+i))this.edges.add(a);
       if(edge(4))this.edges.add('guardPressed');
       const x=axis(pad.axes[2]||0),y=axis(pad.axes[3]||0),p=this.renderer.sim?.activeHero;
@@ -67,7 +67,7 @@ export class Input extends Events {
     this.padPrevious=pressed;
   }
   consume(){
-    if(!this.enabled)return EMPTY_INPUT;
+    if(!this.enabled){this.edges.clear();return EMPTY_INPUT;}
     const k=this.keys,down=(...codes)=>codes.some(c=>k.has(c));
     let x=(down('KeyD','ArrowRight')?1:0)-(down('KeyA','ArrowLeft')?1:0)+this.virtual.x;
     let y=(down('KeyS','ArrowDown')?1:0)-(down('KeyW','ArrowUp')?1:0)+this.virtual.y;
@@ -76,8 +76,8 @@ export class Input extends Events {
     const n=Math.max(1,Math.hypot(x,y));x/=n;y/=n;
     const edge=a=>this.edges.has(a);
     const out={...EMPTY_INPUT,moveX:x,moveY:y,
-      attack:this.held.has('attack')||down('KeyJ')||!!pad?.buttons[7]?.pressed,
-      heavy:this.held.has('heavy')||down('KeyK')||!!pad?.buttons[6]?.pressed,
+      attack:edge('attack')||this.held.has('attack')||down('KeyJ')||!!pad?.buttons[7]?.pressed,
+      heavy:edge('heavy')||this.held.has('heavy')||down('KeyK')||!!pad?.buttons[6]?.pressed,
       guard:this.held.has('guard')||down('ShiftLeft','ShiftRight')||!!pad?.buttons[4]?.pressed,
       guardPressed:edge('guardPressed'),dodge:edge('dodge'),skill1:edge('skill1'),skill2:edge('skill2'),ultimate:edge('ultimate'),bond:edge('bond'),remedy:edge('remedy'),interact:edge('interact'),
       switchTo:edge('party0')?0:edge('party1')?1:edge('party2')?2:null,

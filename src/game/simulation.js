@@ -10,6 +10,7 @@ import { AI } from './ai.js';
 import { Bosses } from './bosses.js';
 import { MissionDirector } from './director.js';
 import { TrainingDirector } from './training.js';
+import { PlayerController } from './player.js';
 
 export const EMPTY_INPUT = Object.freeze({moveX:0,moveY:0,attack:false,heavy:false,guard:false,guardPressed:false,dodge:false,skill1:false,skill2:false,ultimate:false,bond:false,remedy:false,interact:false,switchTo:null,aim:null});
 const timedFields=['invulnerable','hitFlash','stun','frozen'];
@@ -50,6 +51,7 @@ export class Simulation extends Events {
     this.activeIndex=clamp(options.checkpoint?.active ?? profile.active,0,this.party.length-1);
     if(this.world.isHub){this.party=[this.party[this.activeIndex]];this.activeIndex=0;this.party[0].x=0;this.party[0].z=10;this.party[0].slot=0;}
     this.combat=new Combat(this);this.abilities=new Abilities(this);this.ai=new AI(this);this.bosses=new Bosses(this);
+    this.player=new PlayerController(this);
     this.resuming=!!options.checkpoint;this.director=mission.kind==='training'?new TrainingDirector(this):new MissionDirector(this,options.checkpoint);
     this.on('heroDown',()=>{const other=this.party.findIndex(h=>!h.dead);if(other<0)this.fail('The Warden’s last anchor fell.');else if(this.activeHero.dead)this.switchParty(other);});
     this.disposed=false;
@@ -186,35 +188,9 @@ export class Simulation extends Events {
     this.emit('revive',{hero});
   }
   fail(reason){if(this.state!=='running')return;this.state='defeated';this.stats.deaths++;this.profile.deaths++;this.emit('defeat',{reason});}
-  updatePlayer(dt,input){
-    const h=this.activeHero;if(!h||h.dead)return;
-    h.moving=false;
-    if(input.switchTo!==null&&input.switchTo!==undefined)this.switchParty(input.switchTo);
-    // Screen-up points away from an isometric camera at yaw +0.64 radians.
-    const yaw=.64,raw=normalize2(input.moveX||0,input.moveY||0),strength=Math.min(1,Math.hypot(input.moveX||0,input.moveY||0));
-    const dir={x:(raw.x*Math.cos(yaw)+raw.z*Math.sin(yaw))*strength,z:(-raw.x*Math.sin(yaw)+raw.z*Math.cos(yaw))*strength};
-    const e=this.activeHero;
-    const target=this.nearestTarget(e,Math.max(e.range+3,11));
-    let aim=input.aim;
-    if(this.autoAim&&target && (!aim || distance(aim,e)<2 || distance(aim,target)<5.5))aim=target;
-    if(aim&&(input.attack||input.heavy||input.skill1||input.skill2||input.ultimate||input.guard))e.angle=moveAngle(e.angle,angleTo(e,aim),dt*30);
-    else if(strength>.1)e.angle=moveAngle(e.angle,Math.atan2(dir.x,dir.z),dt*12);
-    this.combat.guard(e,!!input.guardPressed,!!input.guard);
-    if(input.dodge)this.combat.dodge(e,dir);
-    if(input.skill1)this.abilities.cast(e,0,aim);
-    if(input.skill2)this.abilities.cast(e,1,aim);
-    if(input.ultimate)this.abilities.cast(e,2,aim);
-    if(input.bond)this.abilities.bond();
-    if(input.remedy)this.combat.remedy();
-    if(input.interact)this.director.interact();
-    if(!this.world.isHub){if(input.heavy)this.combat.attack(e,true,aim?angleTo(e,aim):null);else if(input.attack)this.combat.attack(e,false,aim?angleTo(e,aim):null);}
-    if(this.combat.available(e)&&e.y<1.2&&strength>.1){
-      const speed=e.speed*(e.action?(e.action.kind==='ultimate'?.12:e.action.kind==='heavy'?.35:.62):1)*(e.blocking?.45:1)*(e.statuses.frost>0?.58:1)*(e.statuses.root>0?0:1)*(e.buffs.haste?1.3:1)*(e.buffs.beast?1.18:1);
-      const x=e.x,z=e.z;this.world.move(e,dir.x*speed*dt,dir.z*speed*dt);e.moving=Math.hypot(e.x-x,e.z-z)>dt*.1;e.moveSpeed=speed*strength;
-    }
-  }
+  updatePlayer(dt,input){ this.player.update(dt,input); }
   updatePhysics(e,dt){
-    e.prevX=e.x;e.prevZ=e.z;e.age+=dt;
+    e.prevX=e.x;e.prevZ=e.z;e.prevY=e.y;e.prevAngle=e.angle;e.age+=dt;
     if(e.dead)e.deathAge+=dt;
     if(Math.abs(e.vx)+Math.abs(e.vz)>.05){this.world.move(e,e.vx*dt,e.vz*dt);const drag=Math.exp(-dt*6);e.vx*=drag;e.vz*=drag;}
     if(e.vy!==0||e.y>0){e.vy-=dt*19;e.y+=e.vy*dt;if(e.y<0){e.y=0;e.vy=0;if(e.airborne>0)this.emit('effect',{type:'dust',x:e.x,z:e.z,color:0xafa7b8});}}

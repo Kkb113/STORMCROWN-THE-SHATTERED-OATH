@@ -174,7 +174,7 @@ export class GameApp {
     this.paused=this.context==='menu'||!!this.ui?.current||this.sim?.state!=='running';
     this.input.setEnabled(!this.paused);this.audio.setPaused(this.paused&&this.context!=='menu');
     this.renderer.presentationPaused=this.paused&&this.context!=='menu';
-    if(this.paused)this.accumulator=0;
+    if(this.paused){this.accumulator=0;this.sim?.player.reset();}
   }
   applySettings(settings,persist=true){
     this.settings=sanitizeSettings(settings);this.renderer.applySettings(this.settings);this.audio.applySettings(this.settings);
