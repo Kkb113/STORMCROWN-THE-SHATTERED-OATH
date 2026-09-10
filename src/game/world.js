@@ -1,3 +1,5 @@
+import { clearSegment } from './clearance.js';
+import { NavigationGrid } from './navigation.js';
 import { random, hashString, distance, segmentDistanceSq, clamp, normalize2, TAU } from '../core/math.js';
 
 const LAYOUTS = {
@@ -30,6 +32,7 @@ export class WorldMap {
     this.optional = []; this.isHub = mission.id === 'warden';
     if (this.isHub) this.buildShip(); else this.buildMission();
     this.buildNavigation();
+    this.navigator=new NavigationGrid(this);
   }
   buildMission() {
     const positions = LAYOUTS[this.mission.layout] || LAYOUTS.procession;
@@ -99,10 +102,14 @@ export class WorldMap {
     if (b) { const dx=b.b.x-b.a.x,dz=b.b.z-b.a.z,t=clamp(((p.x-b.a.x)*dx+(p.z-b.a.z)*dz)/(dx*dx+dz*dz||1),0,1); return b.a.y+(b.b.y-b.a.y)*t; }
     return this.rooms.reduce((a,b) => distance(p,a)<distance(p,b)?a:b).y;
   }
-  isWalkable(p, radius = .55, ignoreObstacles = false) {
+  isStaticWalkable(p, radius = .55, ignoreObstacles = false) {
     if (!this.roomAt(p,radius) && !this.bridgeAt(p,radius)) return false;
-    if (this.holes.some(h => distance(p,h) < h.radius+radius)) return false;
-    if (!ignoreObstacles && this.obstacles.some(o => distance(p,o) < o.radius+radius)) return false;
+    if (!ignoreObstacles)for(const o of this.obstacles)if((p.x-o.x)**2+(p.z-o.z)**2<(o.radius+radius)**2)return false;
+    return true;
+  }
+  isWalkable(p, radius = .55, ignoreObstacles = false) {
+    if(!this.isStaticWalkable(p,radius,ignoreObstacles))return false;
+    for(const h of this.holes)if((p.x-h.x)**2+(p.z-h.z)**2<(h.radius+radius)**2)return false;
     return true;
   }
   /** Swept substeps prevent fast dashes tunnelling across gaps or through columns. */
@@ -118,11 +125,7 @@ export class WorldMap {
       if (this.isWalkable(next,r,ignoreObstacles)) entity.z=next.z;
     }
   }
-  clearLine(a,b,radius = .55) {
-    const n = Math.max(2,Math.ceil(distance(a,b)/1.5));
-    for (let i=1;i<=n;i++) if (!this.isWalkable({x:a.x+(b.x-a.x)*i/n,z:a.z+(b.z-a.z)*i/n},radius)) return false;
-    return true;
-  }
+  clearLine(a,b,radius = .55) { return clearSegment(this,a,b,radius); }
   nearestNode(p) {
     let best=0, score=Infinity;
     for (const node of this.nodes) {
@@ -131,28 +134,20 @@ export class WorldMap {
     }
     return best;
   }
-  path(from,to) {
-    if (this.clearLine(from,to)) return [{x:to.x,z:to.z}];
-    const start=this.nearestNode(from),goal=this.nearestNode(to),front=[start],came=new Map([[start,null]]);
-    while (front.length) {
-      const current=front.shift(); if (current===goal) break;
-      for (const next of this.edges[current]) if (!came.has(next)) {came.set(next,current);front.push(next);}
-    }
-    if (!came.has(goal)) return [{x:to.x,z:to.z}];
-    const out=[]; let step=goal;
-    while (step!==null) {out.unshift({x:this.nodes[step].x,z:this.nodes[step].z});step=came.get(step);}
-    out.push({x:to.x,z:to.z});
-    while (out.length>1 && this.clearLine(from,out[1])) out.shift();
-    return out;
+  path(from,to,radius=.55) {
+    if(this.clearLine(from,to,radius))return [{x:to.x,z:to.z}];
+    return this.navigator.find(from,to,radius);
   }
   steer(entity,target,dt,speed = entity.speed) {
     if (distance(entity,target)<.25) return false;
     if (!entity.nav || (entity.navTime || 0)<=0 || distance(entity.navTarget || entity,target)>3) {
-      entity.nav=this.path(entity,target); entity.navTime=.35; entity.navTarget={x:target.x,z:target.z};
+      entity.nav=this.path(entity,target,entity.radius || .55); entity.navTime=.4; entity.navSightTime=0; entity.navTarget={x:target.x,z:target.z};
     }
     entity.navTime-=dt;
-    while (entity.nav.length>1 && distance(entity,entity.nav[0])<1) entity.nav.shift();
-    const goal=this.clearLine(entity,target,entity.radius || .55)?target:(entity.nav[0] || target);
+    while (entity.nav.length>1 && (distance(entity,entity.nav[0])<.18 || (distance(entity,entity.nav[0])<1.5 && this.clearLine(entity,entity.nav[1],entity.radius || .55)))) entity.nav.shift();
+    entity.navSightTime=(entity.navSightTime || 0)-dt;
+    if(entity.navSightTime<=0){entity.navDirect=this.clearLine(entity,target,entity.radius || .55);entity.navSightTime=.12;}
+    const goal=entity.navDirect?target:(entity.nav[0] || target);
     const dir=normalize2(goal.x-entity.x,goal.z-entity.z),angle=Math.atan2(dir.x,dir.z);
     let bestAngle=angle;
     if (!this.isWalkable({x:entity.x+dir.x*1.1,z:entity.z+dir.z*1.1},entity.radius || .55)) {

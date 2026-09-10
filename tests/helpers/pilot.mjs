@@ -55,8 +55,8 @@ export class Pilot {
       if(best){goal=best;stop=.2;this.route=[];this.repath=0;out.dodge=h.stamina>=24;}
     }
     if(goal&&distance(h,goal)>stop){
-      if(this.repath<=0||!this.lastGoal||distance(goal,this.lastGoal)>3){this.route=s.world.path(h,goal);this.lastGoal={x:goal.x,z:goal.z};this.repath=.4;}
-      while(this.route.length>1&&distance(h,this.route[0])<1.5)this.route.shift();
+      if(this.repath<=0||!this.lastGoal||distance(goal,this.lastGoal)>3){this.route=s.world.path(h,goal,h.radius);this.lastGoal={x:goal.x,z:goal.z};this.repath=.4;}
+      while(this.route.length>1&&(distance(h,this.route[0])<.18||(distance(h,this.route[0])<1.5&&s.world.clearLine(h,this.route[1],h.radius))))this.route.shift();
       const waypoint=s.world.clearLine(h,goal,h.radius)?goal:(this.route[0]||goal);
       const direction=normalize2(waypoint.x-h.x,waypoint.z-h.z);
       let a=Math.atan2(direction.x,direction.z),score=Infinity;
