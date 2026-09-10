@@ -1,0 +1,40 @@
+name: Browser gameplay QA
+on:
+  push:
+    branches: [master]
+    paths: ['src/**', 'tools/**', 'tests/**', '.github/workflows/browser-qa.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: browser-qa-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright==1.55.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Native HTTP gameplay and save reload
+        run: python tools/smoke-snapshot.py
+      - name: Reproducible render fixture
+        if: always()
+        run: python tools/browser-metrics.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stormcrown-browser-qa
+          path: |
+            docs/qa/
+            docs/recovery/http-smoke.json
+            docs/recovery/http-server.log
+            docs/recovery/http-smoke-gameplay.png
+          retention-days: 14
