@@ -5,7 +5,7 @@ import { Interface } from '../ui/interface.js';
 import { SaveStore } from '../core/save.js';
 import { loadSettings, sanitizeSettings, storeSettings, DIFFICULTY } from '../core/config.js';
 import { Simulation } from '../game/simulation.js';
-import { createProfile, finishMission, investPoint, resetPoints, upgradeWeapon, setParty, equipRelic, recordConversation } from '../game/progression.js';
+import { createProfile, finishMission, investPoint, resetPoints, upgradeWeapon, setParty, equipRelic, recordConversation, storyCount } from '../game/progression.js';
 import { trainingMission, knownBosses } from '../game/training.js';
 import { CAMPAIGN, getMission, availableMissions } from '../data/campaign.js';
 import { companionTalk, endingLines } from '../data/dialogue.js';
@@ -69,7 +69,11 @@ export class GameApp {
       const rewards=finishMission(this.profile,mission,result);this.autoSave();this.syncPause();
       this.presentation.push({left:1.35,run:()=>this.ui.open('rewards',{mission,result,rewards},{clear:true})});
     });
-    on('defeat',({reason})=>{this.autoSave();this.ui.open('defeat',{reason},{clear:true});});
+    on('defeat',({reason})=>{
+      const checkpoint=this.profile.checkpoint;
+      if(checkpoint?.mission===sim.mission.id)checkpoint.stats={...checkpoint.stats,deaths:sim.stats.deaths};
+      this.autoSave();this.ui.open('defeat',{reason},{clear:true});
+    });
     on('choice',options=>this.ui.open('choice',options,{clear:true}));
     on('boon',options=>this.ui.open('boon',{...options,kind:'boon'},{clear:true}));
     on('dialogue',({lines,after})=>this.ui.showDialogue(lines,{after,title:sim.mission.title}));
@@ -121,7 +125,7 @@ export class GameApp {
   }
   requestMission(mission){
     if(!this.profile||this.context!=='hub')return;
-    const available=mission.kind==='trial'?(mission.eleven?this.profile.ended:this.profile.completed.length>=8&&mission.tier<=this.profile.trialTier):availableMissions(this.profile).some(m=>m.id===mission.id);
+    const available=mission.kind==='trial'?(mission.eleven?this.profile.ended:storyCount(this.profile)>=8&&mission.tier<=this.profile.trialTier):availableMissions(this.profile).some(m=>m.id===mission.id);
     if(!available){this.ui.toast('This oath has not yet become available.');return;}
     if(mission.hero&&!this.profile.party.includes(mission.hero)){this.ui.toast('Bring the companion whose personal oath this is.');return;}
     this.launchMission(mission);
@@ -222,13 +226,13 @@ export class GameApp {
       if(!this.paused&&this.sim?.state==='running'){
         this.accumulator=Math.min(.15,this.accumulator+rawDt);
         let steps=0;while(this.accumulator>=STEP&&steps++<8&&!this.paused&&this.sim.state==='running'){
-          this.sim.update(STEP,this.input.consume());this.profile.elapsed+=STEP;this.accumulator-=STEP;
+          this.accumulator-=STEP;this.sim.update(STEP,this.input.consume());this.profile.elapsed+=STEP;
         }
       }
       const dt=Math.min(.12,rawDt);
       const pending=this.presentation;this.presentation=[];
       for(const event of pending){event.left-=dt;if(event.left<=0)event.run();else this.presentation.push(event);}
-      this.audio.update(dt);this.renderer.render(rawDt);this.ui.update(dt);this.frameCount++;
+      this.audio.update(dt);this.renderer.render(rawDt,this.paused?1:this.accumulator/STEP);this.ui.update(dt);this.frameCount++;
       this.raf=requestAnimationFrame(this.frame);
     }catch(error){this.fatal(error);}
   }

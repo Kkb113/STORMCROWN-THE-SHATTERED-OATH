@@ -61,7 +61,7 @@ export function sanitizeProfile(raw) {
         resources:Array.isArray(c.resources) ? c.resources.slice(0,3).map(r => ({ hp:number(r?.hp,.05,1,1), focus:number(r?.focus,0,250,100), judgment:number(r?.judgment,0,100,40) })) : [],
         remedies:Math.floor(number(c.remedies,0,6,3)), elapsed:number(c.elapsed,0,1e7),
         optional:strings(c.optional,null,60), crownfall:p.ended && c.crownfall === true,
-        stats:{ kills:number(c.stats?.kills,0,100000), rescues:number(c.stats?.rescues,0,10000), reactions:number(c.stats?.reactions,0,100000), damageTaken:number(c.stats?.damageTaken,0,1e9), deaths:number(c.stats?.deaths,0,10000) },
+        stats:{ kills:number(c.stats?.kills,0,100000), rescues:number(c.stats?.rescues,0,10000), reactions:number(c.stats?.reactions,0,100000), parries:number(c.stats?.parries,0,100000), damageTaken:number(c.stats?.damageTaken,0,1e9), deaths:number(c.stats?.deaths,0,10000), optional:strings(c.optional,null,60).length },
       };
       if (p.checkpoint.party.length !== 3) p.checkpoint.party = [...p.party];
     }

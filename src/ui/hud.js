@@ -118,7 +118,8 @@ export class HUD {
     const level=levelForXP(sim.profile.xp),from=xpForLevel(level),to=xpForLevel(Math.min(45,level+1));this.nodes.xp.style.transform=`scaleX(${level>=45?1:clamp((sim.profile.xp-from)/(to-from),0,1)})`;
     const obj=sim.director.objective;this.nodes.questTitle.textContent=obj.title;this.nodes.questText.textContent=obj.text;
     const percent=obj.charge!=null?obj.charge:obj.goal>1&&!['fight','trial','eleven'].includes(obj.type)?obj.progress/obj.goal:null;
-    this.nodes.questProgress.innerHTML=obj.timer!=null?`<span class="quest-timer ${obj.timer<20?'urgent':''}">${icon('clock')} ${clock(obj.timer)}</span>`:percent!=null?`${meter(percent,'objective-meter')}<small>${Math.floor(obj.progress)} / ${obj.goal}</small>`:obj.remaining>0?`<small>${obj.remaining} ${obj.type==='boss'?'Crownbound':'hostiles'} remaining</small>`:'';
+    const progressHTML=obj.timer!=null?`<span class="quest-timer ${obj.timer<20?'urgent':''}">${icon('clock')} ${clock(obj.timer)} · ${obj.progress}/${obj.goal}</span>`:percent!=null?`${meter(Math.round(percent*1000)/1000,'objective-meter')}<small>${Math.floor(obj.progress)} / ${obj.goal}</small>`:obj.remaining>0?`<small>${obj.remaining} ${obj.type==='boss'?'Crownbound':'hostiles'} remaining</small>`:'';
+    if(this.nodes.questProgress.contentKey!==progressHTML){this.nodes.questProgress.innerHTML=progressHTML;this.nodes.questProgress.contentKey=progressHTML;}
     this.nodes.travel.textContent=obj.travel?`Encounter ${sim.director.index+1} / ${sim.mission.stages.length} · ${Math.round(distance(h,sim.director.room))} m`:'';
     const nearby=sim.director.nearestInteraction();this.nodes.interact.classList.toggle('hidden',!nearby);if(nearby)this.nodes.interact.querySelector('span').textContent=nearby.label;
     this.updateBosses();

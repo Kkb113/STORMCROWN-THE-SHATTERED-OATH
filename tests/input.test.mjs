@@ -49,3 +49,17 @@ test('keyboard and analogue stick diagonals are bounded to unit length',()=>devi
   fire(window,'keydown',{code:'KeyD',repeat:false});fire(window,'keydown',{code:'KeyS',repeat:false});input.setStick(1,1);
   const a=input.consume();assert.ok(Math.abs(Math.hypot(a.moveX,a.moveY)-1)<1e-9);
 }));
+
+test('canceling a pointer releases held attacks',()=>device(({input,canvas,window,fire})=>{
+  fire(canvas,'pointerdown',{pointerType:'mouse',button:0,clientX:20,clientY:30});
+  assert.equal(input.consume().attack,true);
+  fire(window,'pointercancel',{pointerType:'mouse',button:-1});
+  assert.equal(input.consume().attack,false);
+}));
+
+test('disconnect events clear controller aim before another poll',()=>device(({input,setPads,window,fire})=>{
+  setPads([{axes:[0,0,1,0],buttons:Array.from({length:16},()=>({pressed:false,value:0}))}]);
+  input.pollGamepad();assert.ok(input.consume().aim);
+  fire(window,'gamepaddisconnected');
+  assert.equal(input.consume().aim,null);
+}));

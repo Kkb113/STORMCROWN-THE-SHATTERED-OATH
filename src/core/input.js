@@ -37,9 +37,10 @@ export class Input extends Events {
       if(e.button===1){e.preventDefault();this.edges.add('dodge');}
     },options);
     addEventListener('pointerup',e=>{if(e.button===0)this.held.delete('attack');if(e.button===2)this.held.delete('heavy');},options);
+    addEventListener('pointercancel',e=>{if(e.pointerType!=='touch'){for(const action of ['attack','heavy']){this.held.delete(action);this.edges.delete(action);}}},options);
     canvas.addEventListener('wheel',e=>{if(this.enabled){e.preventDefault();this.renderer.zoom(e.deltaY);}}, {...options,passive:false});
     addEventListener('gamepadconnected',e=>this.emit('device',{text:`${e.gamepad.id.split('(')[0].trim()} connected`}),options);
-    addEventListener('gamepaddisconnected',()=>{this.pad=null;this.padPrevious=[];this.emit('device',{text:'Controller disconnected · keyboard and mouse remain available'});},options);
+    addEventListener('gamepaddisconnected',()=>{this.pad=null;this.padAim=null;this.padPrevious=[];this.emit('device',{text:'Controller disconnected · keyboard and mouse remain available'});},options);
     document.addEventListener('pointerdown',()=>this.emit('gesture',{}),{...options,passive:true});
   }
   setEnabled(enabled){if(this.enabled!==enabled)this.clear();this.enabled=enabled;}

@@ -14,8 +14,13 @@ const DEF_RIG=[
   ['thighR','hips',[-.2,-.06,0]],['shinR','thighR',[0,-.52,0]],['footR','shinR',[0,-.49,0]],
   ['capeA','chest',[0,.1,-.19]],['capeB','capeA',[0,-.6,-.08]],['capeC','capeB',[0,-.62,-.08]],
 ];
-function rig(){
-  const bones=[],map={};for(const [name,parent,pos] of DEF_RIG){const b=new THREE.Bone();b.name=name;b.position.set(...pos);b.userData.rest=b.position.clone();bones.push(b);map[name]=b;if(parent)map[parent].add(b);}
+const BEAST_RIG=['L','R'].flatMap(side=>['front','rear'].flatMap(end=>{
+  const sign=side==='L'?1:-1,name=`${end}${side}`;
+  return [[name,'root',[sign*.44,1.3,end==='front'?.64:-.72]],
+    [`${name}Knee`,name,[sign*.02,-.7,.08]],[`${name}Paw`,`${name}Knee`,[sign*.01,-.47,.13]]];
+}));
+function rig(beast=false){
+  const bones=[],map={};for(const [name,parent,pos] of beast?[...DEF_RIG,...BEAST_RIG]:DEF_RIG){const b=new THREE.Bone();b.name=name;b.position.set(...pos);b.userData.rest=b.position.clone();bones.push(b);map[name]=b;if(parent)map[parent].add(b);}
   map.root.updateMatrixWorld(true);return {bones,map,skeleton:new THREE.Skeleton(bones)};
 }
 class SkinBuilder {
@@ -31,12 +36,12 @@ class SkinBuilder {
     for(const a of Object.keys(g.attributes))if(!['position','normal','uv','color','surface','skinIndex','skinWeight'].includes(a))g.deleteAttribute(a);
     this.parts.push(g);return this;
   }
-  oval(bone,p,s,c,surface=[.48,.65,0],rot=[0,0,0]){return this.part(OVAL,bone,p,s,c,surface,rot);}
+  oval(bone,p,s,c,surface=[.48,.65,0],rot=[0,0,0]){return this.part(Math.max(...s)<.12?SMALL:OVAL,bone,p,s,c,surface,rot);}
   box(bone,p,s,c,surface=[.32,.85,0],rot=[0,0,0],bevel=.03){const g=bevelBox(...s,bevel);this.part(g,bone,p,[1,1,1],c,surface,rot);g.dispose();return this;}
   line(bone,points,r,c,surface=[.36,.85,0]){const g=tube(points,r,5);this.part(g,bone,[0,0,0],[1,1,1],c,surface);g.dispose();return this;}
-  finish(){const g=mergeGeometries(this.parts,false);for(const p of this.parts)p.dispose();g.computeBoundingSphere();g.boundingSphere.radius=8;return g;}
+  finish(){const g=mergeGeometries(this.parts,false);for(const p of this.parts)p.dispose();g.computeBoundingSphere();g.boundingSphere.radius=Math.max(4.8,g.boundingSphere.radius+1);return g;}
 }
-const METAL=[.3,.9,0],DARK=[.48,.82,0],GOLD=[.32,.94,0],CLOTH=[.96,.02,0],SKIN=[.64,.02,0],LEATHER=[.85,.1,0];
+const METAL=[.32,.78,0],DARK=[.48,.65,0],GOLD=[.32,.84,0],CLOTH=[.96,.02,0],SKIN=[.64,.02,0],LEATHER=[.85,.1,0];
 function bladeGeometry(width=.13,length=1.05){
   // Diamond-section blades retain a razor-like highlight even at the isometric distance.
   const w=width,h=length,positions=[
@@ -119,7 +124,7 @@ function humanoidGeometry(e,r){
   const h=HERO_BY_ID[e.heroId],rank=e.rank||0,enemy=e.team==='hostile',caster=['staff','ritual'].includes(e.weapon),feminine=['sera','nym','mira','maelin'].includes(e.heroId)||e.bossType==='saint';
   const broad=e.heroId==='brann'||['colossus','brute','warengine'].includes(e.bossType||e.enemyType);
   const palette={cloth:h?.cloth || (e.bossType==='malthren'?0x382c48:enemy?0x29222c:0x354254),skin:h?.skin ||(e.bossType==='saint'?0xc8dae0:0x8d766a),hair:h?.hair ||0x302b2c,
-    metal:enemy?0x444b59:rank>=3?0x9aa9b9:0x6c7b91,trim:rank>=4?0xdabc6b:e.bossType==='malthren'?0xd4b465:enemy?0x897158:0xb1a080,glow:e.color||0xaaa0ff};
+    metal:enemy?0x596270:rank>=3?0xb0bfd1:0x899cb6,trim:rank>=4?0xdabc6b:e.bossType==='malthren'?0xd4b465:enemy?0x9e856b:0xc5b18c,glow:e.color||0xaaa0ff};
   if(e.heroId==='lucen'){palette.metal=0x655b7d;palette.trim=0xbba6ce;}
   const b=new SkinBuilder(r),width=broad?1.2:feminine?.9:1;
   // Fitted gambeson, articulated breastplate, fauld, and individually laid armor lames.
@@ -229,7 +234,12 @@ function creatureGeometry(e,r){
     b.line('root',[[s*.23,1.91,1],[s*.48,2.35,.91],[s*.62,2.66,.75],[s*.84,2.91,.6]],.065,0xbbb596,[.72,.08,0]);
     b.line('root',[[s*.51,2.42,.9],[s*.92,2.55,.83],[s*1.1,2.84,.68]],.042,0xbdb99b,[.7,.1,0]);
     b.line('root',[[s*.37,2.19,1],[s*.28,2.5,1.26],[s*.43,2.77,1.2]],.042,0xbdb99b,[.7,.1,0]);
-    for(const z of [-.72,.64]){b.oval('root',[s*.44,.91,z],[.22,.47,.22],c,[.85,.1,0]);b.oval('root',[s*.46,.43,z+.08],[.15,.32,.15],c,[.85,.1,0]);b.oval('root',[s*.47,.13,z+.21],[.22,.12,.29],0x323731,[.8,.1,0]);}
+    for(const end of ['front','rear']){
+      const leg=`${end}${s===1?'L':'R'}`;
+      b.oval(leg,[0,-.39,0],[.22,.47,.22],c,[.85,.1,0]);
+      b.oval(`${leg}Knee`,[0,-.17,0],[.15,.32,.15],c,[.85,.1,0]);
+      b.oval(`${leg}Paw`,[0,0,0],[.22,.12,.29],0x323731,[.8,.1,0]);
+    }
   }
   b.line('root',[[0,1.35,-.91],[0,1.2,-1.45],[.22,1.34,-1.88],[.36,1.55,-2.13]],.15,c,[.9,.03,0]);
   for(let i=0;i<18;i++){const a=i*2.4,g=shardGeometry(i,0);b.part(g,'root',[Math.sin(a)*.43,1.75+(i%3)*.09,-.82+(i/18)*1.65],[.14,.26,.12],i%4===0?glow:c,i%4===0?[.3,.3,1]:[.78,.14,0],[0,0,Math.sin(a)*.7]);g.dispose();}
@@ -263,12 +273,12 @@ export class CharacterFactory {
     const m=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.7,metalness:.5,side:THREE.DoubleSide});
     m.onBeforeCompile=s=>{
       s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nattribute vec3 surface; varying vec3 vSurface;').replace('#include <begin_vertex>','#include <begin_vertex>\nvSurface=surface;');
-      s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vSurface;').replace('#include <roughnessmap_fragment>','float roughnessFactor=clamp(vSurface.x,0.13,0.99);').replace('#include <metalnessmap_fragment>','float metalnessFactor=vSurface.y;').replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vSurface.z;');
-    };m.customProgramCacheKey=()=> 'stormcrown-articulated-surfaces-v3';return m;
+      s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vSurface;').replace('#include <roughnessmap_fragment>','float roughnessFactor=clamp(vSurface.x,0.13,0.99);').replace('#include <metalnessmap_fragment>','float metalnessFactor=vSurface.y;').replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vSurface.z;').replace('#include <opaque_fragment>','float rim=pow(1.-clamp(dot(normal,normalize(vViewPosition)),0.,1.),2.8);\noutgoingLight += diffuseColor.rgb*.045 + vec3(.10,.14,.21)*rim;\n#include <opaque_fragment>');
+    };m.customProgramCacheKey=()=> 'stormcrown-articulated-surfaces-v4';return m;
   }
   key(e){return `${e.heroId||e.bossType||e.enemyType||e.constructType||e.kind}:${e.weapon}:${e.rank||0}:${e.team}:${e.buffs?.beast?'beast':''}`;}
   create(e){
-    const r=rig(),key=this.key(e);let g=this.cache.get(key);
+    const r=rig(e.bossType==='worldbeast'||!!e.buffs?.beast),key=this.key(e);let g=this.cache.get(key);
     if(!g){
       if(e.bossType==='rootless')g=rootlessGeometry(e,r);
       else if(e.bossType==='worldbeast'||e.buffs?.beast)g=creatureGeometry(e,r);
@@ -276,12 +286,14 @@ export class CharacterFactory {
       else g=humanoidGeometry(e,r);
       this.cache.set(key,g);
     }
-    const mesh=new THREE.SkinnedMesh(g,this.material);mesh.add(r.map.root);mesh.bind(r.skeleton);mesh.castShadow=true;mesh.receiveShadow=true;mesh.frustumCulled=false;
+    const mesh=new THREE.SkinnedMesh(g,this.material);mesh.add(r.map.root);mesh.bind(r.skeleton);mesh.castShadow=true;mesh.receiveShadow=true;mesh.boundingSphere=g.boundingSphere.clone();
     const group=new THREE.Group();group.add(mesh);
-    const actor={group,mesh,...r,key,id:e.id,phase:0,opacity:1};this.animate(actor,e,0,0);return actor;
+    const actor={group,mesh,...r,key,id:e.id,phase:e.animSeed||0,run:0,posed:false,pose:r.bones.map(b=>({rotation:b.quaternion.clone(),position:b.position.clone()}))};this.animate(actor,e,0,0);return actor;
   }
   animate(a,e,time,dt){
-    const b=a.map,phase=e.age*(e.moving?9:1.8)+(e.animSeed||0),run=e.moving?Math.min(1,(e.moveSpeed||e.speed||4)/6):0;
+    const b=a.map,targetRun=e.moving&&!e.dead&&!(e.stun>0||e.frozen>0)?Math.min(1,(e.moveSpeed||e.speed||4)/6):0;
+    a.run+=(targetRun-a.run)*(1-Math.exp(-dt*14));a.phase=(a.phase+dt*(1.8+a.run*8))%TAU;
+    const phase=a.phase,run=a.run;
     for(const bone of a.bones){bone.rotation.set(0,0,0);bone.position.copy(bone.userData.rest);}
     const beast=!!e.buffs?.beast||e.bossType==='worldbeast',engine=e.bossType==='warengine'||!!e.constructType&&e.constructType!=='spirit';
     b.root.position.y=Math.sin(time*2.1+(e.animSeed||0))*.012;
@@ -319,12 +331,24 @@ export class CharacterFactory {
     let scale=(e.scale||1)*(e.kind==='hero'||e.kind==='figure'||e.echo?(e.height||1):1);
     if(e.buffs?.beast)scale*=1.6;
     a.group.position.set(e.x,e.y,e.z);a.group.rotation.set(0,e.angle||0,0);a.group.scale.setScalar(scale);
-    if(beast){b.root.position.y+=run*Math.abs(Math.sin(phase))*.14;b.root.rotation.x=Math.sin(phase)*run*.04;b.root.rotation.z=Math.sin(time*2)*.025;}
+    if(beast){
+      b.root.position.y+=run*Math.abs(Math.sin(phase))*.10;b.root.rotation.x=Math.sin(phase)*run*.04;b.root.rotation.z=Math.sin(time*2)*.025;
+      for(const side of ['L','R'])for(const end of ['front','rear']){
+        const name=`${end}${side}`,step=Math.sin(phase)*(side==='L'?1:-1)*(end==='front'?1:-1);
+        b[name].rotation.x=step*run*.5;
+        b[`${name}Knee`].rotation.x=Math.max(0,-step)*run*.85;
+        b[`${name}Paw`].rotation.x=-step*run*.2;
+      }
+    }
     if(engine){b.chest.rotation.y=Math.sin(time*.3)*.05;b.root.position.y+=run*Math.sin(phase)*.035;}
     if(e.bossType==='saint'||e.bossType==='astra'||e.enemyType==='wisp'||e.constructType==='spirit')a.group.position.y+=.4+Math.sin(time*1.9+e.id)*.22;
     if(e.dead){const t=clamp(e.deathAge*2.3,0,1);a.group.rotation.z=(e.id%2?1:-1)*t*1.55;a.group.position.y+=t*.16;if(e.deathAge>3)a.group.scale.multiplyScalar(Math.max(.01,1-(e.deathAge-3)/3));}
     a.group.visible=!e.retired && (!e.dead||e.deathAge<6) && (!(e.invisible>0)||e.id%2===Math.floor(time*12)%2);
-    a.mesh.updateMatrixWorld(true);
+    // Blend back into locomotion without snapping limbs when an action finishes.
+    // All presentation state stays on the actor; simulation transforms remain authoritative.
+    const blend=!a.posed?1:1-Math.exp(-dt*(e.action?45:22));
+    for(let i=0;i<a.bones.length;i++){const bone=a.bones[i],pose=a.pose[i];pose.rotation.slerp(bone.quaternion,blend);pose.position.lerp(bone.position,blend);bone.quaternion.copy(pose.rotation);bone.position.copy(pose.position);}
+    a.posed=true;
   }
   destroy(actor){actor.group.removeFromParent();actor.skeleton.dispose();}
   dispose(){for(const g of this.cache.values())g.dispose();this.material.dispose();this.cache.clear();}

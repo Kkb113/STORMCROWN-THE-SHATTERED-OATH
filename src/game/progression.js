@@ -86,7 +86,7 @@ export function upgradeWeapon(profile, heroId) {
   return { ok:true, name:HERO_BY_ID[heroId].upgrades[next] };
 }
 export function setParty(profile, slot, heroId) {
-  if (!profile.unlocked.includes(heroId) || slot < 0 || slot > 2) return false;
+  if (!profile.unlocked.includes(heroId) || !Number.isInteger(slot) || slot < 0 || slot > 2) return false;
   const oldSlot = profile.party.indexOf(heroId);
   if (oldSlot >= 0) [profile.party[slot],profile.party[oldSlot]] = [profile.party[oldSlot],profile.party[slot]];
   else profile.party[slot] = heroId;

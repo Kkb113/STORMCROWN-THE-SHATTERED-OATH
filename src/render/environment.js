@@ -1,27 +1,45 @@
 import * as THREE from 'three';
 import { REGIONS } from '../data/regions.js';
 import { random, TAU, distance, hashString, normalize2 } from '../core/math.js';
-import { GeometryBatch, bevelBox, shardGeometry, tube, flatRing, archGeometry, cylinderBetween, planeUV, disposeGroup } from './geometry.js';
+import { SHIP_HULL, roomEdgeDistance } from '../game/world.js';
+import { GeometryBatch, bevelBox, shardGeometry, tube, flatRing, archGeometry, cylinderBetween, planeUV, polygonFloor, bridgeDeckGeometry, disposeGroup } from './geometry.js';
 
 const CUBE=bevelBox(1,1,1,.045),CYLINDER=new THREE.CylinderGeometry(1,1,1,12),ROCK=shardGeometry(182,1);
 const NOISE=`float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=noise(p)*a;p=p*2.07+vec2(9.2,4.7);a*=.48;}return v;}`;
+function polygonOutline(room){
+  if(room.shape==='rect'){const w=room.width/2,d=room.depth/2;return [[-w,-d],[w,-d],[w,d],[-w,d]].map(([x,z])=>({x,z}));}
+  if(room.shape==='octagon'){const r=room.radius,k=r*(1.4142-1);return [[-k,-r],[k,-r],[r,-k],[r,k],[k,r],[-k,r],[-r,k],[-r,-k]].map(([x,z])=>({x,z}));}
+  return null;
+}
+const roomAxes=room=>({x:room.shape==='rect'?room.width/2:room.radius,z:room.shape==='rect'?room.depth/2:room.radius});
 
-function cliffGeometry(room,seed){
-  const rng=random(seed),segments=64,rings=6,p=[],uv=[],idx=[];
+export function cliffGeometry(room,seed){
+  const angles=Array.from({length:48},(_,i)=>i*TAU/48);
+  for(const p of polygonOutline(room)||[])angles.push((Math.atan2(p.x,p.z)+TAU)%TAU);
+  angles.sort((a,b)=>a-b);const directions=angles.filter((a,i)=>!i||a-angles[i-1]>1e-7);
+  const rng=random(seed),segments=directions.length,rings=5,p=[],uv=[],idx=[];
   const phases=Array.from({length:segments},()=>rng());
   for(let y=0;y<rings;y++)for(let i=0;i<=segments;i++){
-    const a=(i%segments)*TAU/segments,edge=phases[i%segments],scale=[1.018,1.025,.94,.79,.56,.12][y],rr=room.radius*(scale+(edge-.5)*(.07+y*.025));
-    let x=Math.sin(a)*rr,z=Math.cos(a)*rr;
-    if(room.shape==='rect'){const factor=1/Math.max(Math.abs(Math.sin(a)),Math.abs(Math.cos(a)));x*=factor*.90;z*=factor*.90;}
-    p.push(x,-.28-y*(2.3+edge*.75),z);uv.push(i/segments*12,y*.75);
+    const a=directions[i%segments],edge=phases[i%segments],scale=[1.002,1.025,.84,.58,.12][y];
+    const rr=roomEdgeDistance(room,Math.sin(a),Math.cos(a))*(scale+(y?(edge-.5)*(.07+y*.025):0));
+    p.push(Math.sin(a)*rr,-.12-y*(2.8+edge*.75),Math.cos(a)*rr);uv.push(i/segments*12,y*.9);
   }
-  for(let y=0;y<rings-1;y++)for(let i=0;i<segments;i++){const a=y*(segments+1)+i,b=a+segments+1;idx.push(a,a+1,b,a+1,b+1,b);}
+  for(let y=0;y<rings-1;y++)for(let i=0;i<segments;i++){const a=y*(segments+1)+i,b=a+segments+1;idx.push(a,b,a+1,a+1,b,b+1);}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;
 }
-function makeFloor(room){
-  let g;if(room.shape==='rect'){g=new THREE.PlaneGeometry(room.width,room.depth,1,1);g.rotateX(-Math.PI/2);}
-  else {g=new THREE.CircleGeometry(room.radius,room.shape==='octagon'?8:96);g.rotateX(-Math.PI/2);if(room.shape==='octagon'){g.rotateY(Math.PI/8);g.scale(1.06,1,1.06);}}
+export function makeFloor(room){
+  const outline=polygonOutline(room);let g;
+  if(outline)g=polygonFloor(outline);else {g=new THREE.CircleGeometry(room.radius,64);g.rotateX(-Math.PI/2);}
   return planeUV(g,'xz',.15);
+}
+
+export function shipHullGeometry(){
+  const positions=[],uv=[],indices=[],rings=[[1,.94],[1,.05],[.94,-.75],[.86,-1.6],[.72,-2.5],[.18,-3.8]],n=SHIP_HULL.length;
+  for(let row=0;row<rings.length;row++)for(let i=0;i<=n;i++){
+    const point=SHIP_HULL[i%n],[scale,y]=rings[row];positions.push(point.x*scale,y,point.z*(.55+scale*.45));uv.push(i/n*18,row*.55);
+  }
+  for(let row=0;row<rings.length-1;row++)for(let i=0;i<n;i++){const a=row*(n+1)+i,b=a+n+1;indices.push(a,a+1,b,a+1,b+1,b);}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();return g;
 }
 
 export class Environment {
@@ -56,20 +74,20 @@ export class Environment {
   }
   clearWorld(){
     for(const room of this.rooms.values())disposeGroup(room.group);this.rooms.clear();
-    for(const obj of this.dynamicObjects.values())disposeGroup(obj.group);this.dynamicObjects.clear();
+    for(const obj of this.dynamicObjects.values()){disposeGroup(obj.group);for(const m of obj.ownMats)m.dispose();}this.dynamicObjects.clear();
     disposeGroup(this.bridgeGroup);disposeGroup(this.farGroup);
     for(const child of [...this.group.children])if(child!==this.bridgeGroup&&child!==this.farGroup){disposeGroup(child);this.group.remove(child);}
     for(const m of this.pooledMaterials||[])m.dispose();this.pooledMaterials=[];this.torches=[];this.banners=[];this.special=[];
+    this.flagMaterial=this.waterfallMaterial=this.lavaMaterial=null;this.streamClock=0;for(const light of this.torchLights)light.intensity=0;
   }
   buildRoom(room){
     const rng=random(room.seed),group=new THREE.Group();group.position.set(room.x,room.y,room.z);this.group.add(group);
-    const batch=new GeometryBatch(),p=this.palette,r=room.radius,segmentCount=room.shape==='rect'?32:40;
+    const batch=new GeometryBatch(),p=this.palette,r=room.radius,boundary=this.boundary(room);
     const floor=makeFloor(room);batch.add(floor,p.stone);floor.dispose();
     const cliff=cliffGeometry(room,room.seed);batch.add(cliff,p.rock);cliff.dispose();
     // Radial ashlar masonry with carved, weathered edges and broken crenellations.
-    for(let i=0;i<segmentCount;i++){
-      const a=i*TAU/segmentCount,pos=this.perimeter(room,a,r-.2),gap=this.isBridgeOpening(room,pos);
-      const blockWidth=TAU*r/segmentCount*.93;
+    for(let i=0;i<boundary.length;i++){
+      const {position:pos,angle:a,width:blockWidth}=boundary[i],gap=this.isBridgeOpening(room,pos);
       batch.add(CUBE,p.brick,[pos.x,-.15,pos.z],[0,a,0],[blockWidth,.52,1.05]);
       batch.add(CUBE,p.trim,[pos.x,.13,pos.z],[0,a,0],[blockWidth,.075,.16]);
       if(!gap && i%3!==1){batch.add(CUBE,p.brick,[pos.x,.62,pos.z],[0,a,0],[blockWidth*.8,.8,1]);batch.add(CUBE,p.dark,[pos.x,1.1,pos.z],[0,a,0],[blockWidth*.88,.2,1.13]);}
@@ -110,15 +128,23 @@ export class Environment {
     this.rooms.set(room.id,{group,room});return group;
   }
   perimeter(room,a,r){
-    const sin=Math.sin(a),cos=Math.cos(a);let f=1;
-    if(room.shape==='rect')f=.9/Math.max(Math.abs(sin),Math.abs(cos));
-    else if(room.shape==='octagon')f=Math.min(1/Math.max(Math.abs(sin),Math.abs(cos)),1.4142/(Math.abs(sin)+Math.abs(cos)));
-    return {x:sin*r*f,z:cos*r*f};
+    const sin=Math.sin(a),cos=Math.cos(a),edge=roomEdgeDistance(room,sin,cos)*(r/room.radius);
+    return {x:sin*edge,z:cos*edge};
+  }
+  boundary(room){
+    const outline=polygonOutline(room),segments=[];
+    if(!outline)return Array.from({length:40},(_,i)=>{const a=i*TAU/40;return {position:this.perimeter(room,a,room.radius-.2),angle:a,width:TAU*room.radius/40*.93};});
+    for(let i=0;i<outline.length;i++){
+      const a=outline[i],b=outline[(i+1)%outline.length],length=distance(a,b),dx=(b.x-a.x)/length,dz=(b.z-a.z)/length,count=Math.ceil(length/3.6);
+      for(let j=0;j<count;j++){const t=(j+.5)/count;segments.push({position:{x:a.x+(b.x-a.x)*t-dz*.2,z:a.z+(b.z-a.z)*t+dx*.2},angle:Math.atan2(-dz,dx),width:length/count*.98});}
+    }
+    return segments;
   }
   isBridgeOpening(room,p){
     return this.world.bridges.some(br=>{
       if(br.from!==room.id&&br.to!==room.id)return false;
-      const other=this.world.rooms[br.from===room.id?br.to:br.from],a=Math.atan2(other.x-room.x,other.z-room.z),b=Math.atan2(p.x,p.z);return Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)))<.26;
+      const other=this.world.rooms[br.from===room.id?br.to:br.from],dir=normalize2(other.x-room.x,other.z-room.z);
+      return p.x*dir.x+p.z*dir.z>0&&Math.abs(p.x*dir.z-p.z*dir.x)<br.width/2+.9;
     });
   }
   column(batch,x,z,height=5,r=.65){
@@ -146,9 +172,9 @@ export class Environment {
     const rod=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,2.1,8),this.palette.trim);rod.rotation.z=Math.PI/2;rod.position.y=1.97;root.add(rod);group.add(root);return root;
   }
   stormArchitecture(batch,group,room){
-    const p=this.palette,r=room.radius;
+    const p=this.palette,r=room.radius,axes=roomAxes(room);
     for(const s of [-1,1]){
-      const x=s*r*.67,z=-r*.68;
+      const x=s*axes.x*.67,z=-axes.z*.68;
       this.column(batch,x,z,7.2,.9);
       const cap=new THREE.ConeGeometry(.75,2.2,6);batch.add(cap,p.dark,[x,9.1,z]);cap.dispose();
       batch.add(CYLINDER,p.trim,[x,9.0,z],[0,0,0],[.15,3.4,.15]);
@@ -161,9 +187,9 @@ export class Environment {
     }
   }
   furnaceArchitecture(batch,group,room){
-    const p=this.palette,r=room.radius;
+    const p=this.palette,axes=roomAxes(room);
     for(const s of [-1,1]){
-      const x=s*r*.68,z=-r*.53;batch.add(CUBE,p.dark,[x,2.25,z],[0,.1*s,0],[3.6,4.5,3]);
+      const x=s*axes.x*.68,z=-axes.z*.53;batch.add(CUBE,p.dark,[x,2.25,z],[0,.1*s,0],[3.6,4.5,3]);
       const arch=archGeometry(2.1,3.6,.48,.55,12);batch.add(arch,p.trim,[x,.2,z+1.6]);arch.dispose();
       const fire=new THREE.Mesh(new THREE.PlaneGeometry(1.9,3.1),this.lavaMaterial);fire.position.set(x,1.75,z+1.53);group.add(fire);
       this.column(batch,x+s*2.1,z,8.5,.7);
@@ -172,23 +198,23 @@ export class Environment {
     }
   }
   cathedralArchitecture(batch,group,room){
-    const p=this.palette,r=room.radius,ice=this.materials.plain(0xb6dbe7,.15,.23,{transparent:true,opacity:.76});
+    const p=this.palette,r=room.radius,axes=roomAxes(room),ice=this.materials.plain(0xb6dbe7,.15,.23,{transparent:true,opacity:.76});
     for(const s of [-1,1])for(let i=0;i<3;i++){
-      const x=s*r*.79,z=(i-1)*r*.51;this.column(batch,x,z,8.5, .75);
+      const x=s*axes.x*.79,z=(i-1)*axes.z*.51;this.column(batch,x,z,8.5, .75);
       const a=archGeometry(6,9,.26,.48,16);batch.add(a,p.brick,[x-s*3.05,.1,z],[0,Math.PI/2,0]);a.dispose();
       const pin=new THREE.ConeGeometry(.7,3.3,6);batch.add(pin,ice,[x,11,z]);pin.dispose();
       if(i===0)this.banner(group,x-s*.4,5,z,Math.PI/2*s,.8);
     }
-    for(let i=0;i<10;i++){const a=i*2.399,x=Math.sin(a)*r*.82,z=Math.cos(a)*r*.82;const g=shardGeometry(i,0);batch.add(g,ice,[x,.9,z],[0,a,.2],[.3,.9+i%3*.35,.37]);g.dispose();}
+    for(let i=0;i<10;i++){const a=i*2.399,{x,z}=this.perimeter(room,a,r*.82);const g=shardGeometry(i,0);batch.add(g,ice,[x,.9,z],[0,a,.2],[.3,.9+i%3*.35,.37]);g.dispose();}
     // Frozen citizens are embedded silhouettes in the time-fractured crystal, not collectible clutter.
-    for(let i=0;i<4;i++){const x=(i%2?1:-1)*r*.71,z=(i-1.5)*3.5;batch.add(CYLINDER,p.bone,[x,.9,z],[0,0,0],[.24,1.55,.23]);const head=new THREE.SphereGeometry(.22,8,6);batch.add(head,p.bone,[x,1.9,z]);head.dispose();const crystal=new THREE.OctahedronGeometry(1);batch.add(crystal,ice,[x,1.35,z],[0,.4,0],[.7,1.65,.65]);crystal.dispose();}
+    for(let i=0;i<4;i++){const x=(i%2?1:-1)*axes.x*.71,z=(i-1.5)*3.5;batch.add(CYLINDER,p.bone,[x,.9,z],[0,0,0],[.24,1.55,.23]);const head=new THREE.SphereGeometry(.22,8,6);batch.add(head,p.bone,[x,1.9,z]);head.dispose();const crystal=new THREE.OctahedronGeometry(1);batch.add(crystal,ice,[x,1.35,z],[0,.4,0],[.7,1.65,.65]);crystal.dispose();}
   }
   forestArchitecture(batch,group,room){
     const p=this.palette,rng=random(room.seed+717),r=room.radius,foliage=this.materials.plain(0x385c40,.9,.01,{side:THREE.DoubleSide});
     const leafGeo=new THREE.BufferGeometry();leafGeo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,-.26,.42,.04,0,.95,0,0,0,0,0,.95,0,.26,.42,.04],3));leafGeo.setAttribute('uv',new THREE.Float32BufferAttribute([.5,0,0,.45,.5,1,.5,0,.5,1,1,.45],2));leafGeo.computeVertexNormals();
     const leaves=new THREE.InstancedMesh(leafGeo,foliage,480);let leafIndex=0,mat=new THREE.Matrix4(),q=new THREE.Quaternion(),v=new THREE.Vector3(),scale=new THREE.Vector3();
     for(let i=0;i<5;i++){
-      const a=i*TAU/5+.7,x=Math.sin(a)*r*.87,z=Math.cos(a)*r*.87,h=6+rng()*4;
+      const a=i*TAU/5+.7,{x,z}=this.perimeter(room,a,r*.87),h=6+rng()*4;
       const g=tube([[x,0,z],[x+.3,h*.3,z+.2],[x-.2,h*.65,z-.4],[x+.8,h,z]],.5+rng()*.22,7);batch.add(g,p.wood);g.dispose();
       for(let b=0;b<4;b++){
         const ba=a+b*1.7,end=[x+Math.sin(ba)*3.5,h*.65+rng()*2,z+Math.cos(ba)*3.5];
@@ -204,9 +230,9 @@ export class Environment {
     for(let i=0;i<6;i++){const a=i*1.57,x=Math.sin(a)*r*.4,z=Math.cos(a)*r*.4;const root=tube([[x,.035,z],[x+2,.08,z-1],[x+4,.06,z-2],[x+5,0,z-3]],.055,5);batch.add(root,p.wood);root.dispose();}
   }
   crownArchitecture(batch,group,room){
-    const p=this.palette,r=room.radius;
+    const p=this.palette,r=room.radius,axes=roomAxes(room);
     for(const s of [-1,1]){
-      const x=s*r*.72,z=-r*.61;this.column(batch,x,z,10.5,.85);
+      const x=s*axes.x*.72,z=-axes.z*.61;this.column(batch,x,z,10.5,.85);
       const a=archGeometry(5.5,9,.55,.8,16);batch.add(a,p.dark,[x-s*2.8,.1,z]);a.dispose();
       const b=archGeometry(5.5,9,.08,.1,16);batch.add(b,p.trim,[x-s*2.8,.2,z+.48]);b.dispose();
       this.banner(group,x-s*.2,5.8,z+.8,0,1.3);
@@ -219,13 +245,14 @@ export class Environment {
   buildBridges(){
     const batch=new GeometryBatch(),p=this.palette;
     for(const b of this.world.bridges){
-      const a=this.world.rooms[b.from],z=this.world.rooms[b.to],dir=normalize2(z.x-a.x,z.z-a.z),len=distance(a,z),angle=Math.atan2(dir.x,dir.z),start=a.radius*.81,end=len-z.radius*.81;
-      const real=Math.max(1,end-start),steps=Math.ceil(real/2.1);
+      const a=b.a,z=b.b,dir=normalize2(z.x-a.x,z.z-a.z),angle=Math.atan2(dir.x,dir.z),start=b.deckStart,end=b.deckEnd;
+      if(end<=start)continue;
+      const deck=bridgeDeckGeometry(b);batch.add(deck,p.brick);deck.dispose();
+      for(const s of [-1,1]){const stripe=bridgeDeckGeometry({...b,width:.065},.025);batch.add(stripe,p.trim,[dir.z*s*b.width*.41,.028,-dir.x*s*b.width*.41]);stripe.dispose();}
+      const real=end-start,steps=Math.ceil(real/3.8);
       for(let i=0;i<steps;i++){
-        const t=start+(i+.5)*real/steps,x=a.x+dir.x*t,zz=a.z+dir.z*t,y=a.y+(z.y-a.y)*t/len;
-        batch.add(CUBE,p.brick,[x,y-.28,zz],[Math.atan2(z.y-a.y,len),angle,0],[b.width,.55,real/steps*.985]);
-        if(i%2===0){for(let s of [-1,1]){const px=x+Math.cos(angle)*s*(b.width/2-.2),pz=zz-Math.sin(angle)*s*(b.width/2-.2);batch.add(CUBE,p.dark,[px,y+.3,pz],[0,angle,0],[.45,1.05,.5]);batch.add(CUBE,p.trim,[px,y+.88,pz],[0,angle,0],[.57,.1,.6]);}}
-        for(const s of [-1,1])batch.add(CUBE,p.trim,[x+Math.cos(angle)*s*b.width*.41,y+.025,zz-Math.sin(angle)*s*b.width*.41],[0,angle,0],[.065,.055,real/steps]);
+        const t=start+(i+.5)*real/steps,x=a.x+dir.x*t,zz=a.z+dir.z*t,y=a.y+(z.y-a.y)*(t-start)/real;
+        for(const s of [-1,1]){const px=x+dir.z*s*(b.width/2-.2),pz=zz-dir.x*s*(b.width/2-.2);batch.add(CUBE,p.dark,[px,y+.3,pz],[0,angle,0],[.45,1.05,.5]);batch.add(CUBE,p.trim,[px,y+.88,pz],[0,angle,0],[.57,.1,.6]);}
       }
     }
     batch.build(this.bridgeGroup,true);
@@ -247,14 +274,18 @@ export class Environment {
   }
   buildShip(){
     const group=new THREE.Group();this.group.add(group);const batch=new GeometryBatch(),p=this.palette;
+    this.flagMaterial.color.lerp(new THREE.Color(0x8296bc),.35);
+    this.flagMaterial.emissive.set(0x35496e);this.flagMaterial.emissiveIntensity=.18;
     // A shaped hull, inset deck planks, gilded rails and a suspended rune engine establish a real mobile home.
-    const shape=new THREE.Shape();shape.moveTo(-9,-22);shape.quadraticCurveTo(-10.5,-25,0,-32);shape.quadraticCurveTo(10.5,-25,9,-22);shape.lineTo(10,20);shape.quadraticCurveTo(8,27,0,29);shape.quadraticCurveTo(-8,27,-10,20);shape.closePath();
-    const deck=new THREE.ShapeGeometry(shape,24);deck.rotateX(-Math.PI/2);planeUV(deck,'xz',.18);batch.add(deck,p.wood,[0,1,0]);deck.dispose();
-    for(let level=0;level<5;level++){
-      const geo=new THREE.ExtrudeGeometry(shape,{depth:.8,bevelEnabled:true,bevelSize:.18,bevelThickness:.15,bevelSegments:1,curveSegments:12});geo.rotateX(-Math.PI/2);batch.add(geo,level%2?p.wood:p.dark,[0,.05-level*.73,0],[0,0,0],[1-level*.06,1,1-level*.035]);geo.dispose();
+    const deck=polygonFloor(SHIP_HULL);planeUV(deck,'xz',.18);batch.add(deck,p.wood,[0,1,0]);deck.dispose();
+    const hull=shipHullGeometry();batch.add(hull,p.wood);hull.dispose();
+    for(let i=0;i<SHIP_HULL.length;i++){
+      const a=SHIP_HULL[i],b=SHIP_HULL[(i+1)%SHIP_HULL.length],count=Math.max(1,Math.ceil(distance(a,b)/3));
+      const rail=cylinderBetween([a.x*.975,2.06,a.z*.985],[b.x*.975,2.06,b.z*.985],.075,.075,6);batch.add(rail,p.trim);rail.dispose();
+      const wale=cylinderBetween([a.x,-.03,a.z],[b.x,-.03,b.z],.12,.12,6);batch.add(wale,p.dark);wale.dispose();
+      for(let j=0;j<count;j++){const t=j/count;batch.add(CUBE,p.dark,[(a.x+(b.x-a.x)*t)*.975,1.51,(a.z+(b.z-a.z)*t)*.985],[0,0,0],[.18,1.1,.18]);}
     }
     for(let s of [-1,1]){
-      for(let i=0;i<16;i++){const z=-22+i*3;batch.add(CUBE,p.dark,[s*9.4,1.6,z],[0,0,0],[.25,1.2,.3]);batch.add(CUBE,p.trim,[s*9.4,2.25,z+1.2],[0,0,0],[.28,.16,2.8]);}
       const rib=tube([[s*8.7,-1,20],[s*9.5,-.5,0],[s*9.4,0,-21],[s*4.5,.3,-28],[0,1.2,-32]],.15,6);batch.add(rib,p.trim);rib.dispose();
       for(let i=0;i<4;i++){const z=-14+i*8;batch.add(CUBE,p.dark,[s*8,1.55,z],[0,0,0],[1.2,1,1.6]);const cannon=new THREE.CylinderGeometry(.27,.38,2.3,10);batch.add(cannon,p.dark,[s*9,2,z],[0,0,s*Math.PI/2]);cannon.dispose();}
     }
@@ -263,8 +294,9 @@ export class Environment {
       batch.add(CYLINDER,p.trim,[0,6,z],[0,0,0],[.33,.23,.33]);
       batch.add(CYLINDER,p.wood,[0,13,z],[0,0,Math.PI/2],[.14,14,.14]);
       for(const s of [-1,1]){const rope=tube([[0,16,z],[s*4.8,8,z+3],[s*9,2,z+6]],.037,4);batch.add(rope,p.trim);rope.dispose();}
-      const sail=new THREE.Mesh(new THREE.PlaneGeometry(12,6.6,18,18),this.flagMaterial);sail.position.set(0,9.5,z);sail.rotation.y=.16;group.add(sail);
-      const crest=new THREE.Mesh(new THREE.PlaneGeometry(3.6,3.6),this.materials.runeMaterial(0xbcbacd,.08));crest.position.set(0,9.4,z+.1);group.add(crest);
+      // Reef the sails above the crew's sightline so the active hero stays visible.
+      const sail=new THREE.Mesh(new THREE.PlaneGeometry(12,2.2,18,8),this.flagMaterial);sail.position.set(0,11.9,z);sail.rotation.y=.16;group.add(sail);
+      const crest=new THREE.Mesh(new THREE.PlaneGeometry(1.9,1.9),this.materials.runeMaterial(0xbcbacd,.08));crest.position.set(0,11.9,z+.1);group.add(crest);
     }
     // A table, charts, barrels, benches and a sheltered forge are visible beside the crew.
     batch.add(CUBE,p.wood,[0,1.8,-12],[0,0,0],[4,.25,2.5]);for(const s of [-1,1])for(const z of [-12.9,-11.1])batch.add(CUBE,p.trim,[s*1.5,1.4,z],[0,0,0],[.18,.9,.18]);
@@ -333,7 +365,7 @@ export class Environment {
     this.streamClock-=dt;if(this.streamClock<=0){this.streamClock=.7;this.stream(point);}
     this.updateObjects(time);
     const near=this.torches.filter(t=>distance(t,point)<36).sort((a,b)=>distance(a,point)-distance(b,point));
-    for(let i=0;i<this.torchLights.length;i++){const light=this.torchLights[i],t=near[i];if(t){light.position.set(t.x,t.y+1,t.z);light.intensity=(55+Math.sin(time*12+i)*7);light.color.set(this.region===2?0xa6daff:0xffa566);light.distance=18;}else light.intensity=0;}
+    for(let i=0;i<this.torchLights.length;i++){const light=this.torchLights[i],t=near[i];if(t){light.position.set(t.x,t.y+.65,t.z);light.intensity=24+Math.sin(time*9+i)*2.5;light.color.set(this.region===2?0xa6daff:0xffa566);light.distance=15;}else light.intensity=0;}
   }
   dispose(){this.clearWorld();this.group.removeFromParent();this.sky.geometry.dispose();this.sky.material.dispose();this.sky.removeFromParent();for(const l of this.torchLights)l.removeFromParent();}
 }

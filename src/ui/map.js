@@ -1,4 +1,5 @@
 import { distance, clamp, TAU } from '../core/math.js';
+import { SHIP_HULL } from '../game/world.js';
 /** The map is drawn from collision/navigation data, not a decorative mockup. */
 export function drawMap(canvas,sim,{full=false,region=0}={}){
   if(!canvas||!sim)return;
@@ -7,15 +8,26 @@ export function drawMap(canvas,sim,{full=false,region=0}={}){
   if(!full){ctx.beginPath();ctx.arc(width*.5,height*.5,width*.475,0,TAU);ctx.clip();}
   ctx.fillStyle='#0a0e17';ctx.fillRect(0,0,width,height);
   let center={x:p.x,z:p.z},scale=width/105;
-  if(full){const rooms=sim.world.rooms;const xs=rooms.map(r=>r.x),zs=rooms.map(r=>r.z);const minX=Math.min(...xs)-32,maxX=Math.max(...xs)+32,minZ=Math.min(...zs)-32,maxZ=Math.max(...zs)+32;center={x:(minX+maxX)/2,z:(minZ+maxZ)/2};scale=Math.min(width/(maxX-minX+15),height/(maxZ-minZ+15));}
+  if(full){const rooms=sim.world.rooms,halfX=r=>r.shape==='rect'?r.width/2:r.radius,halfZ=r=>r.shape==='rect'?r.depth/2:r.radius;const minX=Math.min(...rooms.map(r=>r.x-halfX(r))),maxX=Math.max(...rooms.map(r=>r.x+halfX(r))),minZ=Math.min(...rooms.map(r=>r.z-halfZ(r))),maxZ=Math.max(...rooms.map(r=>r.z+halfZ(r)));center={x:(minX+maxX)/2,z:(minZ+maxZ)/2};scale=Math.min(width/(maxX-minX+20),height/(maxZ-minZ+20));}
   const project=(x,z)=>({x:width*.5+(x-center.x)*scale,z:height*.5+(z-center.z)*scale});
   ctx.lineCap='round';ctx.lineJoin='round';
-  for(const bridge of sim.world.bridges){const a=project(bridge.a.x,bridge.a.z),b=project(bridge.b.x,bridge.b.z);ctx.strokeStyle='#253144';ctx.lineWidth=bridge.width*scale;ctx.beginPath();ctx.moveTo(a.x,a.z);ctx.lineTo(b.x,b.z);ctx.stroke();ctx.strokeStyle='#5a4e3d';ctx.lineWidth=1;ctx.stroke();}
-  for(const room of sim.world.rooms){
+  if(sim.world.isHub){
+    ctx.beginPath();SHIP_HULL.forEach((v,i)=>{const q=project(v.x,v.z);if(i)ctx.lineTo(q.x,q.z);else ctx.moveTo(q.x,q.z);});ctx.closePath();ctx.fillStyle='#263044';ctx.strokeStyle='#c6ab76';ctx.lineWidth=1.5;ctx.fill();ctx.stroke();
+  }
+  for(const bridge of sim.world.isHub?[]:sim.world.bridges){const a=project(bridge.a.x,bridge.a.z),b=project(bridge.b.x,bridge.b.z);ctx.strokeStyle='#253144';ctx.lineWidth=bridge.width*scale;ctx.beginPath();ctx.moveTo(a.x,a.z);ctx.lineTo(b.x,b.z);ctx.stroke();ctx.strokeStyle='#5a4e3d';ctx.lineWidth=1;ctx.stroke();}
+  for(const room of sim.world.isHub?[]:sim.world.rooms){
     const q=project(room.x,room.z),seen=sim.world.isHub||sim.profile.visited[`${sim.mission.id}:${room.id}`]||distance(room,p)<room.radius+22,current=room.id===sim.director.index;
     ctx.fillStyle=seen?'#263044':'#141c2b';ctx.strokeStyle=current?'#d1b276':seen?'#657085':'#303b4e';ctx.lineWidth=current?2:1;
-    ctx.beginPath();if(room.shape==='rect')ctx.rect(q.x-room.width*scale*.5,q.z-room.depth*scale*.5,room.width*scale,room.depth*scale);else ctx.arc(q.x,q.z,room.radius*scale,0,TAU);ctx.fill();ctx.stroke();
+    ctx.beginPath();if(room.shape==='rect')ctx.rect(q.x-room.width*scale*.5,q.z-room.depth*scale*.5,room.width*scale,room.depth*scale);else if(room.shape==='octagon'){
+      const r=room.radius*scale,k=.4142;[[1,k],[k,1],[-k,1],[-1,k],[-1,-k],[-k,-1],[k,-1],[1,-k]].forEach(([x,z],i)=>{if(i)ctx.lineTo(q.x+x*r,q.z+z*r);else ctx.moveTo(q.x+x*r,q.z+z*r);});ctx.closePath();
+    }else ctx.arc(q.x,q.z,room.radius*scale,0,TAU);ctx.fill();ctx.stroke();
     if(full){ctx.fillStyle=current?'#f2d9a4':'#b8bfd0';ctx.font=`${Math.max(11,Math.min(16,scale*4))}px system-ui`;ctx.textAlign='center';ctx.fillText(room.id<0?'◆':String(room.id+1),q.x,q.z+5);}
+  }
+  for(const hazard of sim.hazards){
+    if(hazard.dead||!['lava','stormwall'].includes(hazard.visual))continue;
+    const q=project(hazard.x,hazard.z);ctx.save();ctx.translate(q.x,q.z);ctx.rotate(-(hazard.angle||0));
+    ctx.fillStyle=hazard.visual==='lava'?'#ee6628aa':'#c296eaaa';ctx.strokeStyle=hazard.visual==='lava'?'#ffca71':'#ebceff';ctx.lineWidth=1;
+    ctx.beginPath();ctx.rect(-hazard.width*scale/2,-hazard.length*scale/2,hazard.width*scale,hazard.length*scale);ctx.fill();ctx.stroke();ctx.restore();
   }
   for(const hole of sim.world.holes){const q=project(hole.x,hole.z);ctx.fillStyle='#090c14';ctx.beginPath();ctx.arc(q.x,q.z,hole.radius*scale,0,TAU);ctx.fill();}
   const diamond=(q,s,color)=>{ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(q.x,q.z-s);ctx.lineTo(q.x+s,q.z);ctx.lineTo(q.x,q.z+s);ctx.lineTo(q.x-s,q.z);ctx.closePath();ctx.fill();};

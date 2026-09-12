@@ -36,9 +36,8 @@ export class PlayerController {
     if (aim && aiming) e.angle = moveAngle(e.angle, angleTo(e, aim), dt * 32);
     else if (strength > .05) e.angle = moveAngle(e.angle, Math.atan2(dir.x, dir.z), dt * 18);
 
-    const guarded = this.pending.has('guardPressed') && sim.combat.available(e);
-    sim.combat.guard(e, guarded, !!input.guard);
-    if (guarded || !input.guard) this.pending.delete('guardPressed');
+    const guarded = sim.combat.guard(e, this.pending.has('guardPressed'), !!input.guard);
+    if (guarded) this.pending.delete('guardPressed');
     if (this.pending.has('dodge') && sim.combat.dodge(e, dir)) {
       this.pending.delete('dodge'); this.vx = this.vz = 0;
       e.flow = 1;
@@ -64,7 +63,9 @@ export class PlayerController {
     if (input.bond) sim.abilities.bond();
     if (input.remedy) sim.combat.remedy();
     if (input.interact) sim.director.interact();
-    if (!sim.world.isHub) {
+    // Interacting with an oath anchor may replace this entity during the tick.
+    if (e !== sim.activeHero || e.dead || sim.state !== 'running') { this.reset(); return; }
+    if (!sim.world.isHub && !e.blocking) {
       const key = this.pending.has('heavy') ? 'heavy' : this.pending.has('attack') ? 'attack' : null;
       if (key && sim.combat.attack(e, key === 'heavy', aim ? angleTo(e, aim) : null)) this.pending.delete(key);
     }

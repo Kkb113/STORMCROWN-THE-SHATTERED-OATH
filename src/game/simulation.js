@@ -72,10 +72,10 @@ export class Simulation extends Events {
     return [];
   }
   nearestTarget(source,range=Infinity){let best=null,score=range;for(const t of this.targetsFor(source)){const d=distance(source,t);if(d<score){score=d;best=t;}}return best;}
-  schedule(delay,fn,ownerId=0,persist=false){const task={id:this.nextEffectId++,left:Math.max(0,delay),fn,ownerId,persist};this.tasks.push(task);return task.id;}
+  schedule(delay,fn,ownerId=0,persist=false){const task={id:this.nextEffectId++,left:Math.max(0,delay),fn,ownerId,persist,ownerVersion:this.entity(ownerId)?.taskVersion||0};this.tasks.push(task);return task.id;}
   updateTasks(dt){
     const tasks=this.tasks;this.tasks=[];
-    for(const t of tasks){t.left-=dt;const owner=this.entity(t.ownerId);if(!t.persist&&t.ownerId!==0&&(!owner||owner.dead))continue;if(t.left<=0)t.fn();else this.tasks.push(t);}
+    for(const t of tasks){t.left-=dt;const owner=this.entity(t.ownerId);if(!t.persist&&t.ownerId!==0&&(!owner||owner.dead||(owner.taskVersion||0)!==t.ownerVersion))continue;if(t.left<=0)t.fn();else this.tasks.push(t);}
   }
   spawnEnemy(type,p,options={}){
     if(this.enemies.filter(e=>!e.dead).length>=24)return null;
@@ -98,8 +98,8 @@ export class Simulation extends Events {
       for(const t of this.targetsFor(p.owner)){
         if(p.hit.has(t.id)||t.spawnTime>0||t.y>3.5)continue;
         if(segmentDistanceSq(t,from,to)>(p.radius+t.radius)**2)continue;
-        p.hit.add(t.id);this.combat.damage(p.owner,t,p.owner.damage*p.power,{element:p.element,apply:p.apply,freeze:p.freeze,heavy:p.heavy,launch:p.launch,root:p.root,critical:p.critical,parryable:true});
-        if(p.pin){t.stun=Math.max(t.stun,.8);t.vx=Math.sin(p.angle)*8;t.vz=Math.cos(p.angle)*8;}
+        p.hit.add(t.id);const dealt=this.combat.damage(p.owner,t,p.owner.damage*p.power,{element:p.element,apply:p.apply,freeze:p.freeze,heavy:p.heavy,launch:p.launch,root:p.root,critical:p.critical,parryable:true});
+        if(p.pin && dealt>0 && !t.dead){t.stun=Math.max(t.stun,.8);t.vx=Math.sin(p.angle)*8;t.vz=Math.cos(p.angle)*8;}
         if(p.onHit)p.onHit(t);
         if(p.hit.size>p.pierce){this.endProjectile(p);break;}
       }
@@ -136,7 +136,7 @@ export class Simulation extends Events {
   }
   hazard(owner,cfg){
     const h={id:this.nextEffectId++,ownerId:owner.id,owner,x:owner.x,z:owner.z,shape:'circle',radius:3,warn:1,totalWarn:cfg.warn??1,age:0,active:false,
-      activeFor:0,interval:.65,tick:0,damage:owner.damage||80,element:owner.element||'physical',parryable:false,dead:false,...cfg};
+      activeFor:0,interval:.65,tick:0,damage:owner.damage||80,element:owner.element||'physical',parryable:false,dead:false,vx:cfg.velocity?.x||0,vz:cfg.velocity?.z||0,...cfg};
     this.hazards.push(h);return h;
   }
   updateHazards(dt){
@@ -144,6 +144,7 @@ export class Simulation extends Events {
       if(h.dead)continue;
       const owner=this.entity(h.ownerId)||h.owner;
       if(h.ownerId!==0&&(!owner||owner.dead)){h.dead=true;continue;}
+      if(h.warn>0 && h.ownerAction && (owner.action!==h.ownerAction || !this.combat.available(owner))){h.dead=true;continue;}
       h.age+=dt;
       if(h.warn>0){h.warn-=dt;if(h.warn>0)continue;h.warn=0;h.active=true;h.tick=0;
         if(h.onImpact)h.onImpact(h);
@@ -169,7 +170,7 @@ export class Simulation extends Events {
   switchParty(index){
     if(!Number.isInteger(index)||index<0||index>=this.party.length||this.party[index].dead||index===this.activeIndex)return false;
     const old=this.activeHero,next=this.party[index];this.activeIndex=index;this.profile.active=index;
-    old.blocking=false;next.invulnerable=Math.max(next.invulnerable,.28);
+    this.player.reset();old.blocking=false;old.parry=0;next.invulnerable=Math.max(next.invulnerable,.28);
     if(old.heroId==='rael'&&next.heroId==='lucen')next.buffs.dualStorm=5;
     if(this.relics.switchGuard&&(this.switchGuardCooldown||0)<=0){next.invulnerable=Math.max(next.invulnerable,this.relics.switchGuard);this.switchGuardCooldown=12;}
     this.emit('switch',{from:old,to:next,index});this.emit('audio',{type:'switch',element:next.element});return true;
@@ -178,13 +179,27 @@ export class Simulation extends Events {
     const existing=this.party.findIndex(h=>h.heroId===id);
     if(existing>=0)this.activeIndex=existing;
     else{const old=this.activeHero;this.party[this.activeIndex]=makeHero(id,this.profile,p,this.activeIndex);old.retired=true;}
-    const h=this.activeHero;h.x=p.x;h.z=p.z;h.y=0;h.vy=0;h.dead=false;h.hp=h.maxHp;h.focus=h.maxFocus;h.judgment=100;h.cooldowns=[0,0,0];h.angle=angleTo(h,this.director.room);h.action=null;
+    const h=this.activeHero;this.resetHeroState(h);h.x=p.x;h.z=p.z;h.dead=false;h.hp=h.maxHp;h.focus=h.maxFocus;h.judgment=100;h.cooldowns=[0,0,0];h.angle=angleTo(h,this.director.room);
+    h.prevX=h.x;h.prevZ=h.z;h.prevY=h.y;h.prevAngle=h.angle;
+    this.player.reset();
     this.emit('switch',{to:h,index:this.activeIndex});
+  }
+  resetHeroState(hero){
+    this.combat.interrupt(hero);hero.taskVersion=(hero.taskVersion||0)+1;
+    Object.assign(hero,{attackTimer:0,stun:0,frozen:0,dodge:0,airborne:0,stagger:0,
+      vx:0,vz:0,vy:0,y:0,pull:null,statuses:{},buffs:{},burnTick:0,invisible:0,
+      blockAge:0,aiGuardTime:0,moveSpeed:0,moving:false,flow:0,nav:null,navTime:0});
   }
   revive(hero,fraction=.45){
     const p=this.activeHero?.dead?this.world.entry(this.director.index):this.activeHero;
-    hero.dead=false;hero.deathAge=0;hero.hp=hero.maxHp*fraction;hero.stun=0;hero.frozen=0;hero.statuses={};hero.vy=0;hero.y=0;hero.invulnerable=2;
-    if(p && hero.id!==p.id){hero.x=p.x+(hero.slot-1)*1.5;hero.z=p.z+1;}
+    this.resetHeroState(hero);hero.dead=false;hero.deathAge=0;hero.hp=hero.maxHp*fraction;hero.invulnerable=2;
+    if(p && hero.id!==p.id){
+      const nearby={x:p.x+(hero.slot-1)*1.5,z:p.z+1};
+      const safe=this.world.isWalkable(nearby,hero.radius)?nearby:this.world.isWalkable(p,hero.radius)?p:this.world.point(this.director.index,0,.25,hero.radius);
+      hero.x=safe.x;hero.z=safe.z;
+    }
+    hero.prevX=hero.x;hero.prevZ=hero.z;hero.prevY=0;
+    if(hero===this.activeHero)this.player.reset();
     this.emit('revive',{hero});
   }
   fail(reason){if(this.state!=='running')return;this.state='defeated';this.stats.deaths++;this.profile.deaths++;this.emit('defeat',{reason});}

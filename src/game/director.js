@@ -34,7 +34,8 @@ export class MissionDirector {
     const type=this.stage.type;
     const descriptions={fight:`Defeat the invaders · wave ${this.wave}/${this.goal}`,rescue:'Free the captives [F] and guide them to the gold beacon',defend:'Stay near the tower to restore its ward. Protect the core.',escort:'Stay near the transport. Clear ambushes and guard its hull.',sabotage:'Shatter the three Imperial devices',collect:'Recover the scattered records [F]',relay:`Awaken the seals in order: ${this.sequence?.map(i=>GLYPHS[i]).join(' → ')}`,escape:'Follow the escape beacons before the catastrophe catches you',boss:'Read the attack warnings. Blue lightning can be absorbed by Rael.',oath:'Claim the fragment’s memory [F]',choice:'A decision the Warden will carry',anchors:'Approach an anchor [F], then cast its first ability [Q] inside the sigil',trial:`Storm Trial · wave ${this.wave}/${this.goal}`,eleven:`The Eleven · encounter ${this.wave}/9`};
     const p=['fight','boss','trial','eleven'].includes(type)?this.sim.stats.kills:this.progress;
-    return {title:this.stage.title,text:descriptions[type]||'',progress:p,goal:this.goal,type,index:this.index,total:this.mission.stages.length,
+    const text=this.stage.lavaChase?'Lava is advancing. Reach the gold beacons in order; keep moving.':this.stage.stormwalls?descriptions[type]+' Watch the moving lightning walls.':descriptions[type]||'';
+    return {title:this.stage.title,text,progress:p,goal:this.goal,type,index:this.index,total:this.mission.stages.length,
       timer:type==='escape'?Math.max(0,this.timeLimit-this.clock):null,charge:type==='defend'?this.progress/this.goal:null,
       remaining:this.liveEnemies.length,sequence:this.sequence,sequenceProgress:this.sequenceProgress || 0};
   }
@@ -58,12 +59,12 @@ export class MissionDirector {
     }
   }
   start() {
-    if(this.complete || this.sim.world.isHub)return;
+    if(this.complete || this.started || this.sim.state!=='running' || this.sim.world.isHub)return;
     const sim=this.sim;
     this.stage=this.mission.stages[this.index];this.room=sim.world.rooms[this.index];
     if(!this.stage || !STAGE_TYPES.includes(this.stage.type))throw new Error(`Unhandled mission stage ${this.mission.id}:${this.index}`);
     this.started=true;this.clock=0;this.wave=0;this.progress=0;this.nextWave=0;this.required=[];this.sequence=null;this.sequenceProgress=0;
-    this.waitingChoice=false;this.goal=1;this.boss=null;this.transport=null;
+    this.waitingChoice=false;this.goal=1;this.boss=null;this.transport=null;this.lava=null;this.wallTimer=4;this.wallSweep=0;
     sim.emit('stage',{stage:this.stage,index:this.index,room:this.room,total:this.mission.stages.length});
     if(!sim.resuming)sim.emit('checkpoint',{checkpoint:this.checkpoint()});
     sim.resuming=false;
@@ -84,7 +85,7 @@ export class MissionDirector {
     const p=this.sim.world.point(this.index,angle,proportion),e=makeObject(kind,p,{stage:this.index,roomId:this.index,...properties});
     this.sim.objects.push(e);this.required.push(e);return e;
   }
-  start_fight(){this.goal=this.mission.id==='s01'&&this.index===0?2:2+(this.mission.level>14?1:0);this.wave=1;this.spawnWave(this.mission.id==='s01'?5:6+Math.floor(this.mission.level/10));}
+  start_fight(){this.goal=this.stage.waves??(this.mission.id==='s01'&&this.index===0?2:2+(this.mission.level>14?1:0));this.wave=1;this.spawnWave(this.mission.id==='s01'?5:6+Math.floor(this.mission.level/10));}
   start_rescue(){
     this.goal=3;
     for(let i=0;i<3;i++)this.object('cage',Math.PI*.65+i*1.9,.53,{label:'Free the captive',captiveId:i,color:0xd9be82});
@@ -92,7 +93,7 @@ export class MissionDirector {
     this.spawnWave(6,true);this.wave=1;
   }
   start_defend(){
-    this.goal=this.mission.id==='s01'?44:60+(this.mission.level>18?12:0);
+    this.goal=this.stage.duration??(this.mission.id==='s01'?44:60+(this.mission.level>18?12:0));
     this.anchor=this.object('anchor',0,0,{label:'Lightning ward',team:'friendly',damageable:true,hp:2800+this.mission.level*90,maxHp:2800+this.mission.level*90,interactable:false,color:0xb9b0ff});
     this.wave=1;this.spawnWave(5);this.nextWave=16;
   }
@@ -114,9 +115,16 @@ export class MissionDirector {
     this.wave=1;this.spawnWave(4);this.sim.emit('toast',{text:`Seal order: ${this.sequence.map(i=>GLYPHS[i]).join(' → ')}. Use F beside each obelisk.`});
   }
   start_escape(){
-    this.goal=4;this.timeLimit=76;this.route=[];
-    for(let i=0;i<4;i++){const p=this.sim.world.point(this.index,1.2+i*1.75,i===3?.2:.59);this.route.push(p);const e=makeObject('escapeBeacon',p,{stage:this.index,roomId:this.index,label:`Escape beacon ${i+1}`,interactable:false,color:0xe9c57d,sequence:i});this.sim.objects.push(e);this.required.push(e);}
-    this.spawnWave(6);this.nextWave=13;this.catastrophe=3;
+    this.goal=4;this.timeLimit=this.stage.timeLimit??76;this.route=[];
+    for(let i=0;i<4;i++){
+      const p=this.stage.lavaChase?{x:this.room.x+(i===3?0:i%2===0?-5:5),z:this.room.z+17-i*15}:this.sim.world.point(this.index,1.2+i*1.75,i===3?.2:.59);
+      this.route.push(p);const e=makeObject('escapeBeacon',p,{stage:this.index,roomId:this.index,label:`Escape beacon ${i+1}`,interactable:false,color:0xe9c57d,sequence:i});this.sim.objects.push(e);this.required.push(e);
+    }
+    this.spawnWave(this.stage.lavaChase?4:6);this.nextWave=13;this.catastrophe=3;
+    if(this.stage.lavaChase){
+      this.lava=this.sim.hazard(this.sim.environment,{x:this.room.x,z:this.room.z+this.room.depth/2-1,shape:'rect',width:this.room.width,length:2,angle:0,warn:4,activeFor:this.timeLimit+2,interval:.65,damage:this.sim.activeHero.maxHp*.16,element:'fire',visual:'lava',lavaFront:true,unblockable:true});
+      this.sim.emit('toast',{text:'The spillway is breaking. Follow four gold beacons downhill; the glowing lava behind you will keep advancing.'});
+    }
   }
   start_boss(){
     const p=this.sim.world.point(this.index,Math.PI,.25);this.boss=this.sim.spawnBoss(this.stage.param,p);
@@ -147,13 +155,14 @@ export class MissionDirector {
     ids.forEach((id,i)=>{const p=this.sim.world.point(this.index,Math.PI+(i-.5)*.9,.4),e=makeEcho(id,p,this.mission.level,this.sim.difficulty);e.encounter=this.index;this.sim.enemies.push(e);this.sim.emit('spawn',{entity:e});this.sim.emit('bossIntro',{boss:e});});
   }
   update(dt){
-    if(this.complete||this.sim.world.isHub)return;
+    if(this.complete||this.sim.state!=='running'||this.sim.world.isHub)return;
     this.elapsed+=dt;
     if(!this.started){if(distance(this.sim.activeHero,this.room)<this.room.radius*.91)this.start();return;}
     if(this.waitingChoice)return;
     this.clock+=dt;
     this[`update_${this.stage.type}`]?.(dt);
-    if(this.sim.state!=='running')return;
+    if(this.sim.state!=='running'||!this.started)return;
+    if(this.stage.stormwalls)this.updateStormwalls(dt);
     if(this.mission.kind==='trial'||this.sim.profile.crownfall)this.updateModifier(dt);
   }
   update_fight(){if(!this.liveEnemies.length){if(this.wave>=this.goal)this.finishStage();else if(this.nextWave===0){this.nextWave=this.clock+2.4;this.sim.emit('toast',{text:'Reinforcements are approaching.'});}else if(this.clock>=this.nextWave){this.nextWave=0;this.wave++;this.spawnWave(6+Math.floor(this.mission.level/9),true);}}}
@@ -191,11 +200,20 @@ export class MissionDirector {
     if(this.progress>=this.goal)this.finishStage();
   }
   update_escape(dt){
+    if(this.lava){
+      const length=Math.min(this.room.depth,2+Math.max(0,this.clock-4)*(this.stage.lavaSpeed||1.4));
+      this.lava.length=length;this.lava.z=this.room.z+this.room.depth/2-length/2;
+    }
     const p=this.route[this.progress];if(p&&distance(this.sim.activeHero,p)<3){this.required[this.progress].used=true;this.progress++;this.sim.emit('audio',{type:'checkpoint'});}
     if(this.progress>=this.goal){this.finishStage();return;}
-    if(this.clock>=this.timeLimit){this.sim.fail('The escape route vanished into the storm.');return;}
+    if(this.clock>=this.timeLimit){this.sim.fail(this.stage.lavaChase?'The lava overtook the spillway. Follow the gold beacons and keep descending.':'The escape route vanished into the storm.');return;}
     this.catastrophe-=dt;if(this.catastrophe<=0){this.catastrophe=3.8;const hero=this.sim.activeHero,pos={x:hero.x,z:hero.z};this.sim.hazard(this.sim.environment,{...pos,shape:'circle',radius:3.5,warn:1.75,damage:hero.maxHp*.22,element:this.mission.region===1?'fire':'void',visual:this.mission.region===1?'eruption':'lightning',unblockable:true});}
-    if(this.clock>this.nextWave){this.nextWave+=18;this.wave++;this.spawnWave(3);}
+    if(!this.stage.lavaChase&&this.clock>this.nextWave){this.nextWave+=18;this.wave++;this.spawnWave(3);}
+  }
+  updateStormwalls(dt){
+    this.wallTimer-=dt;if(this.wallTimer>0)return;this.wallTimer=9;
+    const sim=this.sim,r=this.room,horizontal=this.wallSweep++%2===1,offset=r.radius*.75,speed=3.8;
+    sim.hazard(sim.environment,{x:r.x+(horizontal?0:offset),z:r.z+(horizontal?offset:0),shape:'rect',width:2.2,length:r.radius*1.35,angle:horizontal?Math.PI/2:0,warn:1.8,activeFor:offset*2/speed,interval:.8,vx:horizontal?0:-speed,vz:horizontal?-speed:0,damage:sim.activeHero.maxHp*.16,element:'storm',visual:'stormwall',unblockable:true});
   }
   update_boss(){if(this.boss?.dead)this.finishStage();}
   update_oath(){}
@@ -238,8 +256,19 @@ export class MissionDirector {
     if(['board','forge','codex','training'].includes(kind)){sim.emit('hubAction',{action:kind});return true;}
     if(target.optional){
       target.used=true;this.optional.add(target.key);sim.stats.optional++;
+      let lore=null;
       if(kind==='cache'){sim.remedies=Math.min(5,sim.remedies+1);for(const h of sim.party)sim.combat.heal(h,h,h.maxHp*.25);sim.emit('toast',{text:'Warden cache · +1 remedy, party restored, bonus Aether on mission completion.'});}
-      else {const lore=LORE.filter(l=>l.at<=storyCount(sim.profile)+2).find(l=>!sim.profile.lore.includes(l.id));if(lore)sim.profile.lore.push(lore.id);sim.emit('memory',{lore});}
+      else {lore=LORE.filter(l=>l.at<=storyCount(sim.profile)+2).find(l=>!sim.profile.lore.includes(l.id));if(lore)sim.profile.lore.push(lore.id);}
+      // Secure discoveries together with their reward. Preserve the encounter
+      // boundary's kill counts and resources rather than saving a partial fight.
+      const boundary=sim.profile.checkpoint?.mission===this.mission.id?sim.profile.checkpoint:this.checkpoint();
+      const checkpoint={...boundary,optional:[...this.optional],stats:{...boundary.stats,optional:sim.stats.optional}};
+      if(kind==='cache'){
+        checkpoint.remedies=Math.min(5,boundary.remedies+1);
+        checkpoint.resources=boundary.resources.map(r=>({...r,hp:Math.min(1,r.hp+.25)}));
+      }
+      sim.emit('checkpoint',{checkpoint});
+      if(kind!=='cache')sim.emit('memory',{lore});
       sim.emit('effect',{type:'claim',x:target.x,z:target.z,color:target.color,radius:3});return true;
     }
     if(kind==='transport'){
@@ -277,7 +306,8 @@ export class MissionDirector {
   choose(id){
     if(this.stage?.type!=='choice'||!this.waitingChoice)return false;
     const key=this.stage.param||'cathedral',option=choiceOptions(key,this.sim.profile).find(o=>o.id===id&&!o.locked);if(!option)return false;
-    recordChoice(this.sim.profile,key,id);if(id==='take')this.sim.profile.shards+=12;
+    const firstChoice=!Object.hasOwn(this.sim.profile.choices,key);
+    recordChoice(this.sim.profile,key,id);if(id==='take'&&firstChoice)this.sim.profile.shards+=12;
     this.waitingChoice=false;for(const e of this.required)e.used=true;
     this.sim.emit('dialogue',{lines:[option.line],after:()=>this.finishStage()});return true;
   }
@@ -291,7 +321,7 @@ export class MissionDirector {
     this.sim.emit('label',{text:`${HERO_BY_ID[e.heroId].short.toUpperCase()} · ${this.progress}/11`,x:e.x,z:e.z,color:HERO_BY_ID[e.heroId].color,large:true});
   }
   finishStage(){
-    if(this.complete||!this.started)return;
+    if(this.complete||!this.started||this.sim.state!=='running')return;
     const sim=this.sim,index=this.index;
     for(const e of this.liveEnemies){e.dead=true;e.deathAge=10;}
     for(const e of sim.objects.filter(o=>o.stage===index)){e.used=true;e.interactable=false;}

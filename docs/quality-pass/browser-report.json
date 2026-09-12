@@ -1,0 +1,229 @@
+{
+  "revision": "e2afdc31694e0db2f17f772ec5e007ae947c976d",
+  "workingTree": [
+    " M README.md",
+    " M src/app/game.js",
+    " M src/core/input.js",
+    " M src/core/save.js",
+    " M src/data/campaign.js",
+    " M src/game/ai.js",
+    " M src/game/combat.js",
+    " M src/game/director.js",
+    " M src/game/player.js",
+    " M src/game/progression.js",
+    " M src/game/simulation.js",
+    " M src/game/world.js",
+    " M src/render/characters.js",
+    " M src/render/environment.js",
+    " M src/render/geometry.js",
+    " M src/render/materials.js",
+    " M src/render/renderer.js",
+    " M src/render/vfx.js",
+    " M src/render/weather.js",
+    " M src/styles.css",
+    " M src/ui/board.js",
+    " M src/ui/hud.js",
+    " M src/ui/interface.js",
+    " M src/ui/map.js",
+    " M tests/browser.py",
+    " M tests/input.test.mjs",
+    "?? src/render/motion.js",
+    "?? tests/combat-state.test.mjs",
+    "?? tests/expeditions.test.mjs",
+    "?? tests/helpers/browser-pilot.mjs",
+    "?? tests/helpers/render-checks.mjs",
+    "?? tests/mission-flow.test.mjs",
+    "?? tests/render-motion.test.mjs"
+  ],
+  "checks": [
+    "WebGL startup and title screen",
+    "New journey reaches controllable gameplay",
+    "Keyboard instantly switches the active party member",
+    "Keyboard movement changes world position",
+    "Pause stops simulation",
+    "Paused world clock remains still",
+    "Warden hub transition",
+    "board panel renders",
+    "roster panel renders",
+    "codex panel renders",
+    "training panel renders",
+    "settings panel renders",
+    "saves panel renders",
+    "Manual save readback",
+    "Reload and Continue restore persistent journey",
+    "Restored journey returns to hub",
+    "x01: expedition appears on the Warden board",
+    "x01: board launches the playable mission",
+    "x01: distinct environmental hazard is active",
+    "x01: rendered hazard matches its moving collision footprint",
+    "x01: production gameplay reaches victory",
+    "x01: victory freezes combat while presenting rewards",
+    "x01: Escape cannot dismiss the victory flow",
+    "x01: duplicate completion cannot grant a second reward",
+    "x01: victory returns to the Warden and saves completion",
+    "x02: expedition appears on the Warden board",
+    "x02: board launches the playable mission",
+    "x02: distinct environmental hazard is active",
+    "x02: rendered hazard matches its moving collision footprint",
+    "x02: production gameplay reaches victory",
+    "x02: victory freezes combat while presenting rewards",
+    "x02: Escape cannot dismiss the victory flow",
+    "x02: duplicate completion cannot grant a second reward",
+    "x02: victory returns to the Warden and saves completion",
+    "Expeditions retain the next main story chapter",
+    "Expedition saves leave the original manual slot intact",
+    "Recruitment cannot strand the journey when Escape is pressed",
+    "Recruitment confirmation resumes the hub",
+    "Platform normals, creature joints, frame interpolation and five-region resource cleanup",
+    "Expedition navigation fits a narrow viewport",
+    "No game fatal error",
+    "No JavaScript or console errors",
+    "No failed runtime asset requests"
+  ],
+  "errors": [],
+  "network_errors": [],
+  "samples": [
+    {
+      "quality": "high",
+      "medianFrameMs": 2.800000011920929,
+      "p95FrameMs": 3.5,
+      "fps": 42,
+      "calls": 122,
+      "triangles": 372282,
+      "geometries": 65,
+      "textures": 40,
+      "resolution": 1,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "actors": 8,
+      "viewport": [
+        1280,
+        720
+      ],
+      "scope": "Synchronous SwiftShader render sample, not real GPU FPS"
+    },
+    {
+      "quality": "medium",
+      "medianFrameMs": 2.4000000059604645,
+      "p95FrameMs": 3.7999999970197678,
+      "fps": 52,
+      "calls": 120,
+      "triangles": 372258,
+      "geometries": 65,
+      "textures": 40,
+      "resolution": 1,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "actors": 8,
+      "viewport": [
+        1280,
+        720
+      ],
+      "scope": "Synchronous SwiftShader render sample, not real GPU FPS"
+    },
+    {
+      "quality": "low",
+      "medianFrameMs": 1.2000000029802322,
+      "p95FrameMs": 1.9000000059604645,
+      "fps": 56,
+      "calls": 105,
+      "triangles": 372081,
+      "geometries": 65,
+      "textures": 40,
+      "resolution": 1,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "actors": 8,
+      "viewport": [
+        1280,
+        720
+      ],
+      "scope": "Synchronous SwiftShader render sample, not real GPU FPS"
+    }
+  ],
+  "scope": "Chromium browser checks, production-input expedition pilots and software-rendering measurements; not a human campaign playthrough or hardware performance certification.",
+  "scenes": {
+    "x01": {
+      "state": "running",
+      "stage": 0,
+      "clock": 5.833333333333318,
+      "hazards": [
+        "stormwall"
+      ],
+      "result": null,
+      "reason": null,
+      "elapsed": 5.8499999999999845
+    },
+    "x02": {
+      "state": "running",
+      "stage": 2,
+      "clock": 4.016666666666658,
+      "hazards": [
+        "lava",
+        "eruption"
+      ],
+      "result": null,
+      "reason": null,
+      "elapsed": 35.21666666666595
+    }
+  },
+  "renderChecks": {
+    "geometry": {
+      "floors": 19,
+      "cliffs": 19,
+      "shipHull": true
+    },
+    "creatures": {
+      "animatedForms": 2,
+      "jointsPerForm": 12
+    },
+    "interpolation": true,
+    "resources": {
+      "regions": 5,
+      "cycles": 3,
+      "hubResources": [
+        {
+          "geometries": 57,
+          "textures": 39
+        },
+        {
+          "geometries": 57,
+          "textures": 39
+        },
+        {
+          "geometries": 57,
+          "textures": 39
+        }
+      ],
+      "ambientOcclusion": true
+    }
+  },
+  "audio": {
+    "state": "running",
+    "voices": 0,
+    "region": "Stormreach Bastion",
+    "intensity": 0.14,
+    "status": "Running"
+  },
+  "final": {
+    "context": "hub",
+    "paused": false,
+    "state": "running",
+    "mission": "warden",
+    "stage": 0,
+    "frameCount": 49,
+    "renderer": {
+      "fps": 125,
+      "calls": 67,
+      "triangles": 206484,
+      "geometries": 57,
+      "textures": 40,
+      "resolution": 1
+    },
+    "audio": {
+      "state": "running",
+      "voices": 0,
+      "region": "Stormreach Bastion",
+      "intensity": 0.14,
+      "status": "Running"
+    }
+  },
+  "status": "passed"
+}

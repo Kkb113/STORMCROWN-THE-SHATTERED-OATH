@@ -55,13 +55,14 @@ export class AI {
   strike(e,t) {
     const sim=this.sim,angle=angleTo(e,t),windup=e.windup || .7,damage=e.damage*(e.style==='brute'&&e.statuses.fire>0?1.35:1);
     e.angle=angle;e.invisible=0;e.attackTimer=e.attackInterval;e.action={kind:'windup',duration:windup+.32,elapsed:0,move:'attack'};
+    const ownerAction=e.action;
     if(['ranged','wisp','priest'].includes(e.style)){
       sim.emit('effect',{type:'aim',from:{x:e.x,z:e.z},to:{x:t.x,z:t.z},color:e.element==='physical'?0xffba94:0xbca0fb,life:windup});
-      sim.schedule(windup,()=>{sim.projectile(e,{angle,speed:e.style==='ranged'?15:10,range:e.range+8,power:1,element:e.element,apply:true,radius:e.style==='wisp'?.55:.3,visual:e.style==='ranged'?'arrow':'orb'});e.action={kind:'attack',duration:.28,elapsed:0};},e.id);
+      sim.schedule(windup,()=>{if(e.action!==ownerAction || !sim.combat.available(e))return;sim.projectile(e,{angle,speed:e.style==='ranged'?15:10,range:e.range+8,power:1,element:e.element,apply:true,radius:e.style==='wisp'?.55:.3,visual:e.style==='ranged'?'arrow':'orb'});e.action={kind:'attack',duration:.28,elapsed:0};},e.id);
     }else if(e.style==='guardian'){
-      sim.hazard(e,{x:t.x,z:t.z,shape:'circle',radius:3,warn:1.05,damage,element:e.element,visual:e.element==='storm'?'lightning':'burst',apply:true,parryable:false});
+      sim.hazard(e,{x:t.x,z:t.z,shape:'circle',radius:3,warn:1.05,damage,element:e.element,visual:e.element==='storm'?'lightning':'burst',apply:true,parryable:false,ownerAction});
     }else{
-      sim.hazard(e,{x:e.x,z:e.z,shape:'cone',angle,arc:e.style==='brute'?2.4:1.7,radius:e.range+.6,warn:windup,damage,element:e.element,visual:e.style==='brute'?'impact':'cleave',parryable:true,apply:e.element!=='physical',launch:e.style==='brute'});
+      sim.hazard(e,{x:e.x,z:e.z,shape:'cone',angle,arc:e.style==='brute'?2.4:1.7,radius:e.range+.6,warn:windup,damage,element:e.element,visual:e.style==='brute'?'impact':'cleave',parryable:true,apply:e.element!=='physical',launch:e.style==='brute',ownerAction});
     }
   }
   priest(e) {

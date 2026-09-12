@@ -5,12 +5,16 @@ import { DIFFICULTY } from '../core/config.js';
 const ELEMENT_HEX = element => ELEMENTS[element]?.hex || 0xd2cedd;
 export class Combat {
   constructor(sim) { this.sim=sim; }
-  available(e) { return !e.dead && e.stun<=0 && e.frozen<=0 && e.dodge<=0 && !e.buffs.timeStopped; }
+  available(e) { return !!e && !e.dead && !e.retired && e.stun<=0 && e.frozen<=0 && e.dodge<=0 && !e.buffs.timeStopped; }
+  interrupt(e) {
+    e.actionSerial=(e.actionSerial||0)+1;e.action=null;e.blocking=false;e.parry=0;
+  }
   beginAction(e,kind,duration,extra={}) {
-    e.actionSerial=(e.actionSerial||0)+1;e.action={kind,duration,elapsed:0,serial:e.actionSerial,...extra}; e.attackTimer=Math.max(e.attackTimer,duration); e.blocking=false;
+    this.interrupt(e);e.action={kind,duration,elapsed:0,serial:e.actionSerial,...extra}; e.attackTimer=Math.max(e.attackTimer,duration);
   }
   attack(e,heavy=false,aim=null) {
     if (!this.available(e) || e.attackTimer>0 || (e.action && e.action.elapsed<e.action.duration*.65)) return false;
+    if (heavy && e.stamina<8) return false;
     const sim=this.sim, h=e.definition, ranged=e.range>7;
     if (Number.isFinite(aim)) e.angle=aim;
     const speed=e.stats?.attackSpeed || 1, large=e.weapon==='hammer';
@@ -23,7 +27,7 @@ export class Combat {
     if (heavy) {e.stamina=Math.max(0,e.stamina-8);}
     sim.emit('audio',{type:heavy?'heavySwing':'swing',x:e.x,z:e.z,element:e.element});
     sim.schedule(duration*(ranged?.32:.4),() => {
-      if (e.dead || e.stun>0 || e.frozen>0 || e.actionSerial!==serial) return;
+      if (!this.available(e) || e.actionSerial!==serial) return;
       let p=power;
       if (e.heroId==='brann' && heavy) {p*=1+e.resource*.28;e.resource=0;}
       if (e.buffs.beast) p*=1.5;
@@ -47,17 +51,20 @@ export class Combat {
     if (!this.available(e) || e.stamina<22*(1+(this.sim.relics.dodgeCost||0))) return false;
     if (e.action?.kind==='ultimate') return false;
     const dir=Math.hypot(direction.x,direction.z)>.05?normalize2(direction.x,direction.z):{x:Math.sin(e.angle),z:Math.cos(e.angle)};
-    e.actionSerial=(e.actionSerial||0)+1;e.dodge=.34; e.invulnerable=Math.max(e.invulnerable,.39);e.dodgeX=dir.x;e.dodgeZ=dir.z;
+    this.interrupt(e);e.dodge=.34; e.invulnerable=Math.max(e.invulnerable,.39);e.dodgeX=dir.x;e.dodgeZ=dir.z;
     e.stamina-=22*(1+(this.sim.relics.dodgeCost||0));e.action={kind:'dodge',duration:.34,elapsed:0};e.attackTimer=.22;e.blocking=false;
     this.sim.emit('effect',{type:'dash',from:{x:e.x,z:e.z},to:{x:e.x+dir.x*5,z:e.z+dir.z*5},color:ELEMENT_HEX(e.element)});
     this.sim.emit('audio',{type:'dodge',x:e.x,z:e.z});
     return true;
   }
   guard(e,pressed,held) {
-    if (!this.available(e) || e.action?.kind==='ultimate') {e.blocking=false;return;}
-    if (pressed && e.stamina>=8) {e.actionSerial=(e.actionSerial||0)+1;e.parry=e.stats?.parryWindow || .2;e.action=null;e.attackTimer=Math.min(e.attackTimer,.08);e.blockAge=0;}
-    e.blocking=held && e.stamina>2;
+    if (!this.available(e) || e.action?.kind==='ultimate') {e.blocking=false;return false;}
+    const started=pressed && e.stamina>=8;
+    if (started) {this.interrupt(e);e.parry=e.stats?.parryWindow || .2;e.attackTimer=Math.min(e.attackTimer,.08);e.blockAge=0;}
+    // A quick tap owns its full parry window, even when released between ticks.
+    e.blocking=(held || e.parry>0) && e.stamina>2;
     if (!held) e.blockAge=0;
+    return started;
   }
   arc(source,range,arc,amount,options={}) {
     let hits=0;
@@ -91,7 +98,7 @@ export class Combat {
     if (target.blocking && front && !options.unblockable && !options.dot) {
       if (target.parry>0 && options.parryable!==false) {
         target.parry=0;target.stamina=clamp(target.stamina+25,0,100);target.focus=clamp(target.focus+22,0,target.maxFocus);target.judgment=clamp(target.judgment+18,0,100);
-        if (source && source.kind!=='object') {source.stun=Math.max(source.stun,source.kind==='boss'?.75:2.1);source.action=null;source.stagger=0;}
+        if (source && source.kind!=='object') {source.stun=Math.max(source.stun,source.kind==='boss'?.75:2.1);this.interrupt(source);source.stagger=0;}
         if (target.heroId==='brann') target.resource=Math.min(3,target.resource+1);
         if (target.heroId==='lucen') target.cooldowns[0]=0;
         if (target.heroId==='mira') target.resource=Math.min(100,target.resource+30);
@@ -154,7 +161,7 @@ export class Combat {
     if (!options.dot && target.kind!=='object') {
       target.stagger+=stagger;
       const threshold=target.kind==='boss'?220:target.style==='brute'?110:65;
-      if (target.stagger>=threshold) {target.stun=target.kind==='boss'?.65:1.1;target.stagger=0;target.action=null;sim.emit('label',{text:target.kind==='boss'?'STAGGERED':'',x:target.x,z:target.z,color:'#e5d0ab'});}
+      if (target.stagger>=threshold) {target.stun=target.kind==='boss'?.65:1.1;target.stagger=0;this.interrupt(target);sim.emit('label',{text:target.kind==='boss'?'STAGGERED':'',x:target.x,z:target.z,color:'#e5d0ab'});}
       if (options.launch && target.kind!=='boss') {
         target.vy=Math.max(target.vy,7+Math.min(4,damage/(target.maxHp||1)*8));target.stun=Math.max(target.stun,.7);target.airborne=.9;
         if (source?.team==='party') source.stamina=clamp(source.stamina+(sim.relics.launchStamina||0),0,100);
@@ -228,7 +235,8 @@ export class Combat {
   }
   kill(source,target,options={}) {
     if(target.dead)return;
-    const sim=this.sim;target.dead=true;target.hp=0;target.deathAge=0;target.blocking=false;target.action=null;target.frozen=0;
+    const sim=this.sim;target.dead=true;target.hp=0;target.deathAge=0;this.interrupt(target);target.frozen=0;
+    target.taskVersion=(target.taskVersion||0)+1;
     if(target.kind==='object'){sim.emit('objectDestroyed',{object:target});sim.emit('effect',{type:'break',x:target.x,z:target.z,color:target.color,radius:2});return;}
     if(target.team==='party'){
       sim.emit('heroDown',{hero:target});sim.emit('audio',{type:'down',x:target.x,z:target.z});return;
@@ -254,7 +262,7 @@ export class Combat {
     if(e.hp>=e.maxHp && sim.party.every(h=>!h.dead&&h.hp>=h.maxHp*.9)) {sim.emit('toast',{text:'The crew is already at full strength.'});return false;}
     sim.remedies--;
     for(const hero of sim.party){
-      if(hero.dead){hero.dead=false;hero.hp=hero.maxHp*.3;hero.invulnerable=2;hero.x=e.x+(hero.slot-1)*2;hero.z=e.z+1;hero.deathAge=0;}
+      if(hero.dead)sim.revive(hero,.3);
       else this.heal(e,hero,hero.maxHp*(hero.id===e.id?.48:.22));
       if(sim.relics.remedyShield)hero.buffs.protected=sim.relics.remedyShield;
     }

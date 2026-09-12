@@ -13,7 +13,9 @@ export class Materials {
       this.textures[key]=texture;this.owned.push(texture);progress(++count/16);
     }));}
     jobs.push(new RGBELoader().loadAsync('./assets/environment/night.hdr').then(hdr=>{
-      const pmrem=new THREE.PMREMGenerator(this.renderer);this.environment=pmrem.fromEquirectangular(hdr).texture;hdr.dispose();pmrem.dispose();this.owned.push(this.environment);progress(++count/16);
+      const pmrem=new THREE.PMREMGenerator(this.renderer);
+      try{const target=pmrem.fromEquirectangular(hdr);this.environment=target.texture;this.owned.push(target);}finally{hdr.dispose();pmrem.dispose();}
+      progress(++count/16);
     }));
     await Promise.all(jobs);this.loaded=true;
   }
@@ -35,7 +37,7 @@ export class Materials {
   region(index){
     const r=REGIONS[index],wet=r.wet;
     return {
-      stone:this.surface('stone',{color:r.stone,repeat:1.3,roughness:wet?.48:.9,metalness:wet?.2:.04,normal:.75}),
+      stone:this.surface('stone',{color:new THREE.Color(r.stone).lerp(new THREE.Color(0xa7afbc),.14).getHex(),repeat:1.3,roughness:wet?.58:.9,metalness:wet?.12:.04,normal:.62}),
       brick:this.surface('brick',{color:r.stone,repeat:1,roughness:.8,metalness:.09,normal:.8}),
       rock:this.surface('rock',{color:index===2?0x8399ab:index===3?0x47594c:0x444452,repeat:2,roughness:.95,normal:1.2}),
       dark:this.plain(index===2?0x566b80:0x202432,.65,.4),
@@ -61,5 +63,5 @@ export class Materials {
     const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;this.textures.runes=t;this.owned.push(t);return t;
   }
   runeMaterial(color=0xc8b18a,glow=.4){const key=`rune:${color}:${glow}`;if(this.materials.has(key))return this.materials.get(key);const m=new THREE.MeshStandardMaterial({map:this.runeTexture(),color,transparent:true,opacity:.88,depthWrite:false,roughness:.3,metalness:.78,emissive:color,emissiveMap:this.runeTexture(),emissiveIntensity:glow,polygonOffset:true,polygonOffsetFactor:-2});this.materials.set(key,m);this.owned.push(m);return m;}
-  dispose(){for(const o of this.owned)o.dispose?.();this.materials.clear();this.owned=[];}
+  dispose(){for(const o of this.owned)o.dispose?.();this.materials.clear();this.owned=[];this.textures={};this.environment=null;this.loaded=false;}
 }

@@ -9,7 +9,7 @@ import { icon } from './icons.js';
 import { esc,button,splitLine,focusable } from './util.js';
 
 const VIEWS={menu:mainMenu,new:newJourney,pause:pauseMenu,settings:settingsPanel,saves:savesPanel,controls:controlsPanel,credits:creditsPanel,confirm:confirmPanel,defeat:defeatPanel,rewards:rewardPanel,choice:choicePanel,boon:choicePanel,board:boardPanel,roster:rosterPanel,codex:journalPanel,map:tacticalMapPanel,training:trainingPanel};
-const PROTECTED=new Set(['menu','defeat','rewards','choice','boon','ending']);
+const PROTECTED=new Set(['menu','defeat','rewards','choice','boon','ending','newHero']);
 
 /** Accessible DOM interface, deliberately independent of WebGL gameplay state.
  * Modal history is explicit. Every listener belongs to this instance or its

@@ -1,36 +1,103 @@
 # STORMCROWN: THE SHATTERED OATH
 
-## Recovered source snapshot
+An isometric action RPG set in the floating kingdoms of Aetherra. Take three
+companions into battle, switch between them instantly, combine elemental attacks,
+and return to the Warden to build the crew's weapons and relationships.
 
-This archive combines **all 47 source/project files currently recoverable from the
-conversation sandbox** with the existing repository's bundled runtime dependencies
-and art assets. The 47 files are preserved byte-for-byte. Their checksums are in
-`docs/recovery/original-sandbox-files.json`.
-
-This is a source handoff, **not a certification that the original game-development
-brief has been completed**. Earlier messages mentioned additional campaign tests
-and later fixes. Those files were not present in the recoverable sandbox and are
-not represented here as recovered or verified. In particular, this archive does
-not establish 20 hours of gameplay, reference-image visual parity, a complete
-campaign playthrough, or a 60 FPS performance guarantee.
+The game includes 40 story missions, 22 companion oaths, 10 Crown echoes,
+two optional expeditions, Storm Trials, training, and the final Eleven challenge.
+The eleven heroes and five regions retain their original campaign progression.
 
 ## Run locally
 
-Use Node.js 22 or later. The rendering library and runtime textures are already
-included; **no `npm install` is required to launch this snapshot**.
+Use Node.js 22 or later (validated with Node.js 24.14.0). Three.js 0.179.1 and the
+runtime textures are bundled; **no `npm install` is required to play**.
 
-```sh
-cd STORMCROWN-THE-SHATTERED-OATH
+```powershell
+cd C:\Users\karth\STORMCROWN-THE-SHATTERED-OATH
 npm start
 ```
 
 Open `http://localhost:4173` in a WebGL 2-capable browser with hardware acceleration
 enabled. Do not open `index.html` directly with a `file://` URL. The game uses ES
 modules, an import map, and HTTP-loaded assets. Gameplay help is available in the
-interface. Sound starts after interaction with the page.
+interface. Sound starts after interaction with the page. Keep the terminal running
+while playing; Ctrl+C stops the server.
 
 The server binds to `0.0.0.0` as in the recovered source; use it on a trusted local
 machine/network rather than as an Internet-facing production server.
+
+## Controls and mission flow
+
+| Action | Keyboard / mouse |
+| --- | --- |
+| Move | WASD or arrow keys |
+| Aim | Mouse cursor |
+| Attack / heavy attack | Left / right mouse button, or J / K |
+| Dodge / guard and parry | Space / Shift |
+| First ability / second ability / ultimate | Q / E / R |
+| Switch party member | 1 / 2 / 3 |
+| Relationship attack / remedy | T / H |
+| Interact | F |
+| Map / crew and forge / journal / pause | M / I / L / Esc |
+
+Read each objective and follow its gold route markers. Free captives with F, stay
+near them until they reach safety, and activate rune seals in the displayed order.
+Escape beacons must be reached in order. Red warnings indicate danger; absorbable
+blue lightning benefits Rael. A short Shift tap opens the parry window even when
+the key is released before the next simulation tick. Heavy attacks cost stamina.
+
+The control guide also lists standard gamepad bindings. Touch devices display a
+movement stick and combat buttons. Difficulty and crew builds can be changed
+aboard the Warden.
+
+## New expeditions
+
+Open **Chart a course → Expeditions** aboard the Warden and select the kingdom.
+These are optional routes; completing them does not advance or reorder the story.
+
+| Mission | Kingdom | Unlock | Recommended level | Encounters |
+| --- | --- | --- | --- | --- |
+| The Stormglass Causeway (`x01`) | Stormreach | Complete 4 story missions | 5 | 4 |
+| The Mountain Runs Red (`x02`) | Cinderfall | Complete 12 story missions | 12 | 5 |
+
+**The Stormglass Causeway:** cross moving lightning walls, solve the grounding
+sequence, defend a restored beacon, and face the Colossus. Watch the warning line
+and move around the ends of each electrical curtain.
+
+**The Mountain Runs Red:** rescue furnace workers, destroy Imperial siphons, then
+descend two spillways as lava consumes the route behind you. Follow four gold
+beacons on each descent; the growing molten front deals damage and the escape
+timer continues during combat.
+
+Both missions have dialogue, encounter checkpoints, completion rewards and replay
+support. Their mechanics extend the moving-wall and volcanic-escape concepts in
+the supplied [design brief](docs/reference/original-game-brief.md).
+
+## Saves
+
+The automatic slot records encounter boundaries. Three manual slots and exported
+save files remain independent. Reloading a mission restores its encounter start,
+with secured discoveries and their reward credit retained. Completed missions,
+crew builds and decisions persist. Returning to the Warden clears the active
+mission checkpoint; returning to the title retains it.
+
+Save format **3** is retained. Existing story mission IDs and unlock order are
+unchanged. Use **Save & load → Export current save** to keep a portable backup.
+
+## Graphics and responsiveness
+
+The renderer uses corrected platform outlines and cliff normals, a shared ship
+hull/collision outline, continuous descending bridge ramps, softer torch bloom,
+brighter character materials and a closer gameplay camera. Character poses blend
+between actions; displayed positions interpolate between the 60 Hz gameplay ticks.
+Torren's beast form and the World Beast have articulated legs.
+
+Stormwall curtains follow their moving collision zones, and lava visuals expand
+with the advancing hazard. Weather and particles respect quality settings. Only
+live particles and debris are submitted, and scene transitions release temporary
+graphics resources. Lower render scale or choose Low/Medium in Settings when
+needed; adaptive resolution is enabled by default.
 
 ## Create a static build
 
@@ -40,71 +107,61 @@ node tools/serve.mjs --dist
 ```
 
 The build copies the runtime into `dist/` and uses relative asset paths. Deploy
-the **contents** of `dist/` to a static HTTP host. A prebuilt `dist/` is deliberately
-not duplicated inside the source ZIP; it is reproduced with the command above.
-
-## What is included
-
-- `src/`: application, gameplay simulation, combat, abilities, AI, bosses, mission
-  director, progression, saves, input, renderer, character/environment construction,
-  VFX, weather, audio synthesis, interfaces, and content data.
-- `assets/`: 15 PBR texture maps, the HDR environment, asset provenance/checksums,
-  and a favicon reconstructed from the already-authored crown icon.
-- `vendor/`: pinned Three.js 0.179.1 and its add-on modules, with its license.
-- `art-source/anatomy/`: the separately acquired character anatomy OBJ, license
-  documents, and provenance. **It is included as source material, not claimed to
-  be integrated into the recovered game renderer.**
-- `tools/`: original server, build, and asset-fetching scripts; a new packaging
-  checker; and a new optional HTTP browser smoke check.
-- `.github/workflows/`: workflows recovered from the earlier repository bundle.
-  They are historical automation, not proof of a newly deployed release.
-- `docs/reference/`: the supplied design brief and visual-reference image.
-- `docs/screenshots/`: screenshots preserved from previous development runs.
-- `docs/recovery/`: original-source checksums, earlier browser harnesses/logs,
-  recovery notes, and fresh packaging validation output.
+the **contents** of `dist/` to a static HTTP host. Building replaces generated files
+inside `dist/`; authored files remain in `src/`. No deployment is performed by the
+build command.
 
 ## Verification
+
+See the [validation record and screenshots](docs/quality-pass/README.md) for this
+update's observed test results and their scope.
 
 ```sh
 npm run check
 npm test
 npm run build
+python tests/browser.py
+python tests/build-browser.py
 ```
 
-`npm run check` and the one new package test verify preservation of the recovered
-source, syntax of the authored JavaScript, resolution of modules reachable from
-the browser entry, and checksums of the bundled PBR assets. **They are not the
-previously mentioned 33 gameplay regression tests.** That earlier suite is not
-available in this snapshot.
+`npm test` covers controls, combat interruption, parries, revival, navigation,
+checkpoint persistence, mission rewards, the eleven final anchors, both new
+expeditions, render interpolation, and all 40 story missions. The campaign pilot
+uses production movement and combat commands; it does not teleport or award itself
+victory. It is an automated traversal check, not a human balance assessment.
 
-The original smoke scripts and their original logs are retained unchanged under
-`docs/recovery/previous-tests/`. Those legacy scripts use sandbox-specific paths
-and an in-memory storage harness; their old results are not evidence of actual
-HTTP save/reload persistence. The new optional check at
-`tools/smoke-snapshot.py` uses an ordinary local HTTP server and reports its scope
-in `docs/recovery/http-smoke.json`. It needs Python with Playwright and Chromium. In this packaging session the
-local HTTP server responded, but Chromium navigation was blocked by the execution
-environment (`ERR_BLOCKED_BY_ADMINISTRATOR`). Therefore no fresh browser gameplay
-or save/reload pass is claimed. The exact attempted-check output is preserved.
+`npm run check` verifies authored JavaScript syntax, browser module resolution,
+the presence of recovered files, and checksums of 16 bundled PBR/HDR assets.
+Historical source hashes are reported separately and do not freeze development.
 
-The checksum comparison to original recovered files is expected to fail once you
-intentionally edit those files. Update or remove that recovery-specific assertion
-when continuing normal development; it is an archive-preservation check.
+The browser check needs Python, Playwright and its Chromium browser. It uses its
+own local server on port 4178 and isolated browser storage, then closes both.
+It checks actual keyboard input, menus, pause, HTTP save/reload, expedition board
+launches and completion, reward protection, rendered hazards, platform geometry,
+creature animation, five-region resource cleanup and narrow-screen navigation.
+Reports and screenshots are written to `test-results/browser/` (Git-ignored).
+`tests/build-browser.py` separately launches the generated `dist/` on port 4179
+and verifies startup, movement and checkpoint reload with no source-tree runtime
+fallback. Its evidence is in `test-results/build-browser/`.
 
-## Recovery provenance and changes made only for packaging
+Browser render samples use SwiftShader and are diagnostic measurements, **not a
+hardware FPS guarantee**. The brief's campaign-hour targets and reference-image
+parity are not certified by these tests.
 
-The runtime assets and vendor modules were restored from the conversation's
+## Source and asset provenance
+
+`src/` contains the game, procedural character/environment geometry, shaders, UI
+and synthesized audio. `assets/` contains the bundled textures, HDR environment,
+icon and provenance; `vendor/` contains Three.js and its license. This update uses
+the existing bundled materials and procedural meshes, without external runtime
+asset downloads. `art-source/anatomy/` remains reference source material and is
+not the active character renderer.
+
+The recovered runtime assets and vendor modules originally came from
 `stormcrown-repository-assets.zip`, containing a Git bundle at commit
 `a85ea88594ede79b6c4da4d6a11bc51641b81477` (the asset commit). The sandbox game
-source was overlaid afterward, without modifying it. This package is not a claim
-that the game source was pushed to GitHub.
-
-Packaging additions: this README, recovery/verification documents, the SVG favicon
-reusing the crown path from `src/ui/icons.js`, the anatomy source directory, one
-archive-integrity test, the static checker, and the optional HTTP smoke script.
-No recovered gameplay implementation file was rewritten during packaging.
-
-Git metadata, credentials, node_modules, generated build output, and font binaries
-are not included. Third-party asset and library license/provenance files are
-preserved in their respective directories. No new license is asserted over the
-user's original brief or game source.
+source was overlaid afterward. Historical recovery manifests, previous test logs
+and screenshots are retained under `docs/recovery/` and `docs/screenshots/`; they
+are not evidence for the current build. Third-party licenses remain in their
+respective asset/vendor directories. No new license is asserted over the supplied
+brief or game source.

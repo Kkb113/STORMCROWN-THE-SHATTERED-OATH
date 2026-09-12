@@ -1,0 +1,20 @@
+{
+  "checks": [
+    "Static build loads all required modules and assets",
+    "Static build starts the playable story",
+    "Keyboard movement works in the generated build",
+    "Built game reload restores the saved mission checkpoint",
+    "Built game has no JavaScript or shader errors",
+    "Built game has no failed runtime requests"
+  ],
+  "errors": [],
+  "network_errors": [],
+  "scope": "Generated dist HTTP/WebGL startup, controls and persistent checkpoint smoke test.",
+  "build": {
+    "name": "STORMCROWN",
+    "version": "1.0.0",
+    "revision": "local",
+    "built": "2026-09-12T09:02:31.003Z"
+  },
+  "status": "passed"
+}

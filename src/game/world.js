@@ -11,8 +11,36 @@ const LAYOUTS = {
   citadel: [[0,0],[0,-60],[-46,-105],[0,-152],[0,-210],[40,-252]],
   arena: [[0,0],[0,-54],[0,-109],[42,-152],[0,-198],[0,-249]],
   finale: [[0,0],[-42,-48],[0,-105],[0,-168],[45,-214],[0,-258]],
+  stormglass: [[0,0],[43,-43],[-10,-94],[20,-152]],
+  spillway: [[0,0],[0,-55],[0,-130],[0,-225],[0,-300]],
 };
 const SPACES = { boss:23, fight:18.5, defend:19, rescue:18, escort:21, sabotage:19, collect:18, relay:18, escape:24, choice:16, oath:16, anchors:24, trial:25, eleven:25, hub:25 };
+
+// The same convex outline is used for the visible deck and its collision edge.
+// Coordinates are world x/z: the prow points toward negative z.
+export const SHIP_HULL = Object.freeze([
+  [-9,-22],[-8.4,-25],[-6,-27.8],[-3.3,-30],[0,-32],
+  [3.3,-30],[6,-27.8],[8.4,-25],[9,-22],[10,20],
+  [8.7,24],[5.5,27],[0,29],[-5.5,27],[-8.7,24],[-10,20],
+].map(([x,z]) => Object.freeze({x,z})));
+const SHIP_PLANES = SHIP_HULL.map((a,i) => {
+  const b=SHIP_HULL[(i+1)%SHIP_HULL.length],length=distance(a,b);
+  const nx=(b.z-a.z)/length,nz=(a.x-b.x)/length;
+  return {nx,nz,limit:nx*a.x+nz*a.z};
+});
+function shipContains(p,margin=0) {
+  return SHIP_PLANES.every(({nx,nz,limit}) => p.x*nx+p.z*nz <= limit-margin+1e-8);
+}
+
+/** Distance from a platform's center to its actual edge along a direction. */
+export function roomEdgeDistance(room,dx,dz) {
+  const length=Math.hypot(dx,dz);
+  if(length<1e-8)return 0;
+  const x=Math.abs(dx/length),z=Math.abs(dz/length);
+  if(room.shape==='rect')return Math.min(x?room.width/(2*x):Infinity,z?room.depth/(2*z):Infinity);
+  if(room.shape==='octagon')return Math.min(x?room.radius/x:Infinity,z?room.radius/z:Infinity,room.radius*1.4142/(x+z));
+  return room.radius;
+}
 
 export function roomContains(room, p, margin = 0) {
   const x = p.x-room.x, z = p.z-room.z;
@@ -38,11 +66,11 @@ export class WorldMap {
     const positions = LAYOUTS[this.mission.layout] || LAYOUTS.procession;
     const region = this.mission.region, rng = this.rng;
     this.mission.stages.forEach((stage, index) => {
-      const pos = positions[index % positions.length], radius = SPACES[stage.type] || 18;
-      const shape = ['boss','oath','anchors','trial','eleven'].includes(stage.type) ? 'circle' :
+      const pos = positions[index % positions.length], radius = stage.lavaChase?36:SPACES[stage.type] || 18;
+      const shape = stage.lavaChase?'rect':['boss','oath','anchors','trial','eleven'].includes(stage.type) ? 'circle' :
         (this.mission.layout === 'cloister' || region === 2 ? 'rect' : index % 3 === 1 ? 'octagon' : 'circle');
-      const room = { id:index, stage:index, x:pos[0], z:pos[1], y:this.mission.layout === 'descent' ? -index*3.5 : 0,
-        radius, width:radius*1.8, depth:radius*1.8, shape, title:stage.title, kind:stage.type,
+      const room = { id:index, stage:index, x:pos[0], z:pos[1], y:['descent','spillway'].includes(this.mission.layout) ? -index*3.5 : 0,
+        radius, width:stage.lavaChase?26:radius*1.8, depth:stage.lavaChase?68:radius*1.8, shape, title:stage.title, kind:stage.type,
         theme:this.mission.theme, region, seed:hashString(this.mission.id+'-'+index), landmark:region };
       this.rooms.push(room);
       if (index > 0) this.connect(this.rooms[index-1],room, ['escape','escort'].includes(stage.type) ? 9 : 7.6);
@@ -81,9 +109,13 @@ export class WorldMap {
       {...base,id:2,x:0,z:22,radius:9,width:18,depth:18,shape:'circle',title:'The Warden • Quarterdeck'},
     ];
     this.connect(this.rooms[0],this.rooms[1],14); this.connect(this.rooms[0],this.rooms[2],14);
-    this.obstacles = [{x:0,z:6,y:1,radius:1.1,height:14,kind:'mast',room:0},{x:0,z:-15,y:1,radius:1,height:13,kind:'mast',room:0}];
+    this.obstacles = [-7,13].map(z=>({x:0,z,y:1,radius:.34,height:15.5,kind:'mast',room:0}));
   }
-  connect(a,b,width) { this.bridges.push({ id:this.bridges.length,a:{x:a.x,y:a.y,z:a.z},b:{x:b.x,y:b.y,z:b.z},from:a.id,to:b.id,width, length:distance(a,b), y:(a.y+b.y)/2 }); }
+  connect(a,b,width) {
+    const dx=b.x-a.x,dz=b.z-a.z,length=distance(a,b);
+    this.bridges.push({ id:this.bridges.length,a:{x:a.x,y:a.y,z:a.z},b:{x:b.x,y:b.y,z:b.z},from:a.id,to:b.id,width,length,y:(a.y+b.y)/2,
+      deckStart:roomEdgeDistance(a,dx,dz),deckEnd:length-roomEdgeDistance(b,-dx,-dz) });
+  }
   buildNavigation() {
     this.nodes = this.rooms.map(r => ({id:r.id,x:r.x,z:r.z,y:r.y,room:r.id}));
     this.edges = this.nodes.map(() => []);
@@ -97,13 +129,18 @@ export class WorldMap {
   roomAt(p, margin = 0) { return this.rooms.find(r => roomContains(r,p,margin)) || null; }
   bridgeAt(p, margin = 0) { return this.bridges.find(b => segmentDistanceSq(p,b.a,b.b) <= Math.max(.5,b.width/2-margin)**2) || null; }
   heightAt(p) {
+    if(this.isHub)return 1;
     const room = this.roomAt(p); if (room) return room.y;
     const b = this.bridgeAt(p);
-    if (b) { const dx=b.b.x-b.a.x,dz=b.b.z-b.a.z,t=clamp(((p.x-b.a.x)*dx+(p.z-b.a.z)*dz)/(dx*dx+dz*dz||1),0,1); return b.a.y+(b.b.y-b.a.y)*t; }
+    if (b) {
+      const dx=b.b.x-b.a.x,dz=b.b.z-b.a.z,along=((p.x-b.a.x)*dx+(p.z-b.a.z)*dz)/(b.length||1);
+      const t=clamp((along-b.deckStart)/Math.max(.001,b.deckEnd-b.deckStart),0,1);
+      return b.a.y+(b.b.y-b.a.y)*t;
+    }
     return this.rooms.reduce((a,b) => distance(p,a)<distance(p,b)?a:b).y;
   }
   isStaticWalkable(p, radius = .55, ignoreObstacles = false) {
-    if (!this.roomAt(p,radius) && !this.bridgeAt(p,radius)) return false;
+    if(this.isHub ? !shipContains(p,radius) : !this.roomAt(p,radius) && !this.bridgeAt(p,radius)) return false;
     if (!ignoreObstacles)for(const o of this.obstacles)if((p.x-o.x)**2+(p.z-o.z)**2<(o.radius+radius)**2)return false;
     return true;
   }
@@ -125,7 +162,14 @@ export class WorldMap {
       if (this.isWalkable(next,r,ignoreObstacles)) entity.z=next.z;
     }
   }
-  clearLine(a,b,radius = .55) { return clearSegment(this,a,b,radius); }
+  clearLine(a,b,radius = .55) {
+    if(this.isHub){
+      // Both endpoints inside a convex inset imply the entire segment is on deck.
+      return shipContains(a,radius)&&shipContains(b,radius)&&
+        [...this.obstacles,...this.holes].every(o=>segmentDistanceSq(o,a,b)>=(o.radius+radius)**2);
+    }
+    return clearSegment(this,a,b,radius);
+  }
   nearestNode(p) {
     let best=0, score=Infinity;
     for (const node of this.nodes) {

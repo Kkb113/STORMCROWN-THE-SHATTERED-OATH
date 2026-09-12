@@ -2,7 +2,7 @@ import { HEROES } from './heroes.js';
 import { REGIONS } from './regions.js';
 
 /** Authored mission graphs. A stage is an actual traversable encounter space. */
-const stage = text => { const [type, title, param] = text.split('|'); return { type, title, param }; };
+const stage = text => { if(typeof text==='object')return {...text};const [type, title, param] = text.split('|'); return { type, title, param }; };
 function mission(id, title, region, theme, layout, stages, brief, intro, outro, extra = {}) {
   return { id, title, region, theme, layout, stages: stages.map(stage), brief, intro, outro, ...extra };
 }
@@ -303,6 +303,31 @@ export const HUNTS = [
 ], brief, [`Nym|This is not the past. It is what the Crown remembers of it.`, `Rael|Then we give it something new to remember.`],
 ['Maelin|It is quieter now.', 'Rael|Let it rest.'], { kind: 'hunt', unlockAt, modifier, level: 15 + i * 3, reward: 1800 + i * 140, crownfall: unlockAt === 40 }));
 
+/** Optional routes preserve the original story order and existing save IDs. */
+export const EXPEDITIONS = [
+  M('x01', 'The Stormglass Causeway', 0, 'bridges', 'stormglass', [
+    {type:'fight',title:'The Broken Conductors',waves:2,stormwalls:true},
+    {type:'relay',title:'The Grounding Sequence',stormwalls:true},
+    {type:'defend',title:'A Light Across the Abyss',duration:40,stormwalls:true},
+    'boss|The Bellkeeper’s Last Watch|colossus',
+  ], 'A broken lightning network has sealed the evacuation causeway behind moving walls of thunder. Cross the sweeps, ground the three seals, and restore a beacon before the bellkeeper brings the span down.',
+  ['Brann|The wall moves with the current. Watch it before you commit.', 'Sera|Those gaps are wide enough. Keep moving.', 'Rael|We ground the conductors. Then we bring the light back.'],
+  ['Brann|Look across the span. They can see the beacon.', 'Rael|Then they know someone is still coming.'],
+  {kind:'expedition',unlockAt:4,level:5,reward:950,feature:'Moving stormwalls',
+    modifier:{name:'Crosscurrents',description:'Lightning walls sweep across the causeway. Watch their warning lines and move around their ends.'}}),
+  M('x02', 'The Mountain Runs Red', 1, 'furnace', 'spillway', [
+    'rescue|The Last Furnace Shift',
+    'sabotage|Break the Imperial Siphons',
+    {type:'escape',title:'The Furnace Spillway',lavaChase:true,timeLimit:52,lavaSpeed:1.35},
+    {type:'escape',title:'Down the Blackstone Face',lavaChase:true,timeLimit:48,lavaSpeed:1.5},
+    'oath|The Warden Below',
+  ], 'Imperial siphons have split the mountainside. Free the furnace workers, break the extraction machines, then descend two collapsing spillways as lava consumes the path behind you. Follow the gold beacons; staying to fight can cost the escape.',
+  ['Sera|I worked these furnaces. That sound means the mountain has opened.', 'Brann|We get the workers out first.', 'Rael|Then we break their machines and take the lower route.'],
+  ['Sera|I thought every road home would end in ashes.', 'Brann|This one ended with people aboard.', 'Sera|Yes. It did.'],
+  {kind:'expedition',unlockAt:12,level:12,reward:1450,feature:'Advancing lava',
+    modifier:{name:'The mountain is falling',description:'Lava overtakes each descending spillway. Reach four beacons in order and keep ahead of the glowing front.'}}),
+];
+
 export const TRIAL_MODIFIERS = [
   { id: 'surge', name: 'Conductive Rain', description: 'All combatants are wet. Lightning spreads farther.', effect: 'wet' },
   { id: 'embers', name: 'Falling Embers', description: 'Volcanic impacts force constant movement.', effect: 'lava' },
@@ -313,7 +338,9 @@ export const TRIAL_MODIFIERS = [
   { id: 'hunger', name: 'Crown’s Hunger', description: 'Focus regeneration is halved. Attacks restore more.', effect: 'focus' },
   { id: 'confluence', name: 'Elemental Confluence', description: 'Elemental reactions deal double damage.', effect: 'reactions' },
 ];
+export const MAX_TRIAL_TIER = 1001;
 export function trialMission(tier = 1, eleven = false) {
+  tier=Number.isFinite(tier)?Math.max(1,Math.min(MAX_TRIAL_TIER,Math.floor(tier))):1;
   const region = (tier - 1) % 5, mod = TRIAL_MODIFIERS[(tier - 1) % TRIAL_MODIFIERS.length];
   return M(eleven ? 'eleven' : `trial-${tier}`, eleven ? 'The Eleven' : `Storm Trial ${String(tier).padStart(2, '0')}`, region, 'arena', 'arena',
     [eleven ? 'eleven|The Eight You Did Not Choose' : 'trial|The Storm’s Invitation'],
@@ -321,12 +348,18 @@ export function trialMission(tier = 1, eleven = false) {
     ['Rael|The storm favors the bold.'], ['Brann|Still standing. That will do.'],
     { kind: 'trial', tier, eleven, modifier: mod, level: 8 + tier * 2, reward: 700 + tier * 160 });
 }
-export const MISSIONS = [...CAMPAIGN, ...COMPANION_QUESTS, ...HUNTS];
+export const MISSIONS = [...CAMPAIGN, ...COMPANION_QUESTS, ...HUNTS, ...EXPEDITIONS];
 export const MISSION_BY_ID = Object.fromEntries(MISSIONS.map(m => [m.id, m]));
-export function getMission(id) { return MISSION_BY_ID[id] ?? (id === 'eleven' ? trialMission(20, true) : /^trial-\d+$/.test(id) ? trialMission(Math.max(1, Number(id.slice(6)))) : null); }
+export function getMission(id) {
+  if(typeof id!=='string')return null;
+  if(Object.hasOwn(MISSION_BY_ID,id))return MISSION_BY_ID[id];
+  if(id==='eleven')return trialMission(20,true);
+  const match=/^trial-([1-9]\d{0,3})$/.exec(id),tier=match?Number(match[1]):0;
+  return tier>0&&tier<=MAX_TRIAL_TIER?trialMission(tier):null;
+}
 export function availableMissions(save) {
   const cleared = CAMPAIGN.filter(m => save.completed.includes(m.id)).length;
   return MISSIONS.filter(m => m.kind === 'story' ? m.index <= cleared : cleared >= m.unlockAt && (!m.hero || save.unlocked.includes(m.hero)) && (m.part !== 2 || save.completed.includes(`${m.hero}1`)));
 }
 export function regionProgress(save, region) { const ms = CAMPAIGN.filter(m => m.region === region); return { done: ms.filter(m => save.completed.includes(m.id)).length, total: ms.length }; }
-export const CONTENT_COUNTS = Object.freeze({ story: CAMPAIGN.length, companion: COMPANION_QUESTS.length, hunts: HUNTS.length, heroes: HEROES.length, regions: REGIONS.length, stages: MISSIONS.reduce((n, m) => n + m.stages.length, 0) });
+export const CONTENT_COUNTS = Object.freeze({ story: CAMPAIGN.length, companion: COMPANION_QUESTS.length, hunts: HUNTS.length, expeditions:EXPEDITIONS.length, heroes: HEROES.length, regions: REGIONS.length, stages: MISSIONS.reduce((n, m) => n + m.stages.length, 0) });
